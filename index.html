@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Arduino Nicla Sense ME - Human Arm Motion Control</title>
+
+  <link href='https://fonts.googleapis.com/css?family=Roboto Mono' rel='stylesheet'>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/109/three.min.js"></script>
+  <style>
+    * {
+      font-family: 'Roboto Mono', sans-serif;
+    }
+
+    body {
+      color: white;
+      background: #000000;
+      font-size: 14px;
+    }
+
+    #pairButton {
+      background-color: #d8f41d;
+      border: none;
+      color: black;
+      padding: 1px;
+      text-align: center;
+      text-decoration: none;
+      margin: 8px 18px;
+      height: 25px;
+      width: 100px;
+      border-radius: 20px;
+      cursor: pointer;
+    }
+
+    .container {
+      width: 960px;
+      height: 800px;
+      margin-top: 30px;
+      margin-bottom: 7.5px;
+      margin: 0 auto;
+    }
+
+    .widget {
+      background-color: #111111;
+      border: 1px solid #000000;
+      border-radius: 0px;
+      padding: 12px;
+      margin: 6px;
+      float: left;
+      color: #DAE3E3;
+      padding-bottom: 16px;
+    }
+
+    .status {
+      margin-top: 1%;
+      width: 885px;
+      height: 42px;
+      color: white;
+      display: grid;
+      grid-template-columns: 15% 70% 15%;
+    }
+
+    #bluetooth {
+      font-size: 16px;
+      height: 50%;
+      margin: auto;
+    }
+
+    .graph {
+      width: 192px;
+      height: 177px;
+    }
+
+    .doublegraph {
+      width: 423px;
+      height: 177px;
+    }
+
+    /* New widget for human model */
+    .human-widget {
+      width: 100%;
+      height: 400px;
+      background-color: #222222;
+      margin-top: 20px;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div id="snackbar"></div>
+    <div class="status widget">
+      <button id="pairButton">CONNECT</button>
+      <div class="label statusBar" id="bluetooth">Click the connect button to connect your device</div>
+    </div>
+
+    <div class="double widget">
+      <div class="label">Accelerometer</div>
+      <div id="accelerometer" class="doublegraph"></div>
+    </div>
+
+    <div class="double widget">
+      <div class="label">Gyroscope</div>
+      <div id="gyroscope" class="doublegraph"></div>
+    </div>
+
+    <!-- New human model widget -->
+    <div class="human-widget widget" id="humanModelContainer">
+      <div class="label">Human Arm Motion Control</div>
+      <div id="humanModel" style="width: 100%; height: 100%;"></div>
+    </div>
+  </div>
+</body>
+
+<script type="text/javascript">
+  var NiclaSenseME = {
+    accelerometer: {
+      uuid: '19b10000-5001-537e-4f6c-d104768a1214',
+      properties: ['BLENotify'],
+      structure: ['Float32', 'Float32', 'Float32'],
+      data: { 'Ax': [], 'Ay': [], 'Az': [] }
+    },
+    gyroscope: {
+      uuid: '19b10000-6001-537e-4f6c-d104768a1214',
+      properties: ['BLENotify'],
+      structure: ['Float32', 'Float32', 'Float32'],
+      data: { 'x': [], 'y': [], 'z': [] }
+    }
+  };
+
+  const SERVICE_UUID = '19b10000-0000-537e-4f6c-d104768a1214';
+  const pairButton = document.getElementById('pairButton');
+  const BLEstatus = document.getElementById('bluetooth');
+
+  if ("bluetooth" in navigator) {
+    pairButton.addEventListener('click', function (event) {
+      connect();
+    });
+  } else {
+    BLEstatus.innerHTML = "Error: This browser doesn't support Web Bluetooth.";
+  }
+
+  async function connect() {
+    pairButton.style.backgroundColor = "grey";
+    pairButton.style.color = 'black';
+    pairButton.innerHTML = "PAIRING";
+    BLEstatus.innerHTML = 'requesting device ...';
+
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [
+        {
+          services: [SERVICE_UUID]
+        }
+      ]
+    });
+
+    BLEstatus.innerHTML = 'connecting to device ...';
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+
+    for (const sensor in NiclaSenseME) {
+      NiclaSenseME[sensor].characteristic = await service.getCharacteristic(NiclaSenseME[sensor].uuid);
+      if (NiclaSenseME[sensor].properties.includes("BLENotify")) {
+        NiclaSenseME[sensor].characteristic.addEventListener('characteristicvaluechanged', function (event) {
+          handleIncoming(NiclaSenseME[sensor], event.target.value);
+        });
+        await NiclaSenseME[sensor].characteristic.startNotifications();
+      }
+    }
+
+    pairButton.style.backgroundColor = 'green';
+    pairButton.style.color = 'white';
+    pairButton.innerHTML = "PAIRED";
+    BLEstatus.innerHTML = 'Characteristics configured';
+  }
+
+  function handleIncoming(sensor, dataReceived) {
+    const columns = Object.keys(sensor.data);
+    const typeMap = {
+      "Float32": { fn: DataView.prototype.getFloat32, bytes: 4 }
+    };
+    var packetPointer = 0, i = 0;
+
+    sensor.structure.forEach(function (dataType) {
+      var dataViewFn = typeMap[dataType].fn.bind(dataReceived);
+      var unpackedValue = dataViewFn(packetPointer, true);
+      sensor.data[columns[i]].push(unpackedValue);
+      packetPointer += typeMap[dataType].bytes;
+      i++;
+    });
+
+    console.log(sensor.data);
+    // Update the human model here based on sensor data
+    updateHumanModel(sensor.data);
+  }
+
+function updateHumanModel(sensorData) {
+    // Extract accelerometer and gyroscope data
+    const { Ax, Ay, Az } = sensorData;
+    const { x, y, z } = sensorData;
+
+    // Normalize accelerometer data to calculate orientation
+    const magnitude = Math.sqrt(Ax[Ax.length - 1] ** 2 + Ay[Ay.length - 1] ** 2 + Az[Az.length - 1] ** 2);
+    const normAx = Ax[Ax.length - 1] / magnitude;
+    const normAy = Ay[Ay.length - 1] / magnitude;
+    const normAz = Az[Az.length - 1] / magnitude;
+
+    // Calculate rotation angles (pitch and roll) from accelerometer data
+    const pitch = Math.atan2(normAy, normAz);
+    const roll = Math.atan2(-normAx, Math.sqrt(normAy ** 2 + normAz ** 2));
+
+    // Use gyroscope data for additional rotation (yaw)
+    const yaw = z[z.length - 1]; // Assuming z represents yaw rate
+
+    // Update the Three.js human model
+    const container = document.getElementById('humanModel');
+    const arm = container.querySelector('canvas').scene.children.find(obj => obj.type === 'Mesh');
+
+    if (arm) {
+        arm.rotation.x = pitch;
+        arm.rotation.y = yaw;
+        arm.rotation.z = roll;
+    }
+}
+
+  // Initialize Three.js for the human model
+  function initHumanModel() {
+    const container = document.getElementById('humanModel');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(width, height);
+    container.appendChild(renderer.domElement);
+
+    const geometry = new THREE.CylinderGeometry(0.5, 0.5, 3, 32);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const arm = new THREE.Mesh(geometry, material);
+    scene.add(arm);
+
+    camera.position.z = 10;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+  }
+
+  window.onload = function () {
+    initHumanModel();
+  };
+
+</script>
+
+</html>
