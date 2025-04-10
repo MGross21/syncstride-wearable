@@ -10,6 +10,8 @@ if [ $# -eq 1 ]; then
 fi
 
 echo "Starting local server on port $PORT..."
+echo "Server will be accessible at: http://localhost:$PORT"
+
 python3 -m http.server "$PORT"
 
 echo "Server is running at: http://localhost:$PORT"
