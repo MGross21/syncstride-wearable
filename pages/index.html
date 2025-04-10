@@ -72,9 +72,13 @@
     .human-widget {
       width: 100%;
       height: 400px;
+      padding: 0px;
+      margin: 0px;
       background-color: #222222;
       margin-top: 20px;
       text-align: center;
+      position: relative; /* Optional: helps if overlay issues arise */
+      overflow: hidden;   /* Optional: hides overflow, but you might try 'visible' to test */
     }
   </style>
 </head>
@@ -97,8 +101,8 @@
     </div>
 
     <div class="human-widget widget" id="humanModelContainer">
-      <div class="label">Human Arm Motion Control</div>
-      <div id="humanModel" style="width: 100%; height: 100%;"></div>
+      <div class="label">Human Arm Motion</div>
+      <div id="humanModel" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;"></div>
     </div>
   </div>
 

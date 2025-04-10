@@ -174,6 +174,7 @@ function initHumanModel() {
     new THREE.SphereGeometry(0.5, 32, 32),
     new THREE.MeshBasicMaterial({ color: 0xff0000 })
   );
+  shoulder.position.y = 4;
   scene.add(shoulder);
 
   const upperArm = new THREE.Mesh(
