@@ -179,20 +179,20 @@ function initHumanModel() {
 
   const upperArm = new THREE.Mesh(
     new THREE.CylinderGeometry(0.2, 0.2, 2, 32),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+    new THREE.MeshBasicMaterial({ color: 0xff0000 })
   );
   upperArm.position.y = -1.5;
   shoulder.add(upperArm);
 
   elbow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.4, 32, 32),
-    new THREE.MeshBasicMaterial({ color: 0x0000ff })
+    new THREE.SphereGeometry(0.3, 32 , 32),
+    new THREE.MeshBasicMaterial({ color: 0xffff00 })
   );
   elbow.position.y = -2;
   upperArm.add(elbow);
 
   const forearm = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.15, 0.15, 2, 32),
+    new THREE.CylinderGeometry(0.2, 0.2, 2, 32),
     new THREE.MeshBasicMaterial({ color: 0xffff00 })
   );
   forearm.position.y = -1.5;

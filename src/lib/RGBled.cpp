@@ -13,6 +13,7 @@
 #include <mbed.h>
 #include <I2C.h>
 #include "RGBled.h"
+#include <Arduino.h>
 #include "Nicla_System.h"
 
 void RGBled::begin()
