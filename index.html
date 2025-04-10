@@ -7,6 +7,7 @@
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/109/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
   <style>
     * {
       font-family: 'Roboto Mono', sans-serif;
@@ -87,12 +88,12 @@
 
     <div class="double widget">
       <div class="label">Accelerometer</div>
-      <div id="accelerometer" class="doublegraph"></div>
+      <canvas id="accelerometerChart" class="doublegraph"></canvas>
     </div>
-
+    
     <div class="double widget">
       <div class="label">Gyroscope</div>
-      <div id="gyroscope" class="doublegraph"></div>
+      <canvas id="gyroscopeChart" class="doublegraph"></canvas>
     </div>
 
     <div class="human-widget widget" id="humanModelContainer">

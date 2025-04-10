@@ -4,124 +4,161 @@ const BLEstatus = document.getElementById('bluetooth');
 let isConnecting = false;
 let lastUpdateTime = 0;
 const updateInterval = 50;
+const MAX_POINTS = 200; // ~10 seconds of data
 
-const graphData = {
-  accelerometer: { x: [], y: [], z: [] },
-  gyroscope: { x: [], y: [], z: [] },
-};
-
+// Store chart + sensor data
 const NiclaSenseME = {
   accelerometer: {
     uuid: '19b10000-5001-537e-4f6c-d104768a1214',
-    properties: ['BLENotify'],
-    structure: ['Float32', 'Float32', 'Float32'],
-    data: { Ax: [], Ay: [], Az: [] }
+    data: { Ax: [], Ay: [], Az: [], timestamps: [] },
+    chart: null,
   },
   gyroscope: {
     uuid: '19b10000-6001-537e-4f6c-d104768a1214',
-    properties: ['BLENotify'],
-    structure: ['Float32', 'Float32', 'Float32'],
-    data: { x: [], y: [], z: [] }
+    data: { x: [], y: [], z: [], timestamps: [] },
+    chart: null,
   }
 };
 
 if ("bluetooth" in navigator) {
   pairButton.addEventListener('click', connect);
 } else {
-  BLEstatus.innerHTML = "Error: This browser doesn't support Web Bluetooth.";
+  BLEstatus.innerText = "Error: This browser doesn't support Web Bluetooth.";
 }
 
+// ---------------- BLE Connect ----------------
 async function connect() {
   if (isConnecting) return;
   isConnecting = true;
 
   try {
-    pairButton.style.backgroundColor = "grey";
-    pairButton.innerText = "PAIRING";
-    BLEstatus.innerHTML = 'Requesting device...';
-
+    updateUIState('pairing');
     const device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [SERVICE_UUID] }]
     });
-
-    BLEstatus.innerHTML = 'Connecting...';
     const server = await device.gatt.connect();
     const service = await server.getPrimaryService(SERVICE_UUID);
 
-    for (const sensor in NiclaSenseME) {
-      const sensorObj = NiclaSenseME[sensor];
-      sensorObj.characteristic = await service.getCharacteristic(sensorObj.uuid);
-      if (sensorObj.properties.includes("BLENotify")) {
-        sensorObj.characteristic.addEventListener('characteristicvaluechanged', (event) => {
-          handleIncoming(sensorObj, event.target.value);
-        });
-        await sensorObj.characteristic.startNotifications();
-      }
+    for (const name in NiclaSenseME) {
+      const sensor = NiclaSenseME[name];
+      sensor.characteristic = await service.getCharacteristic(sensor.uuid);
+      await sensor.characteristic.startNotifications();
+      sensor.characteristic.addEventListener('characteristicvaluechanged', e =>
+        handleIncoming(name, e.target.value)
+      );
     }
 
-    pairButton.style.backgroundColor = 'green';
-    pairButton.innerText = "PAIRED";
-    BLEstatus.innerHTML = 'Connected and receiving data.';
-  } catch (error) {
-    console.error('Connection failed:', error);
-    BLEstatus.innerHTML = 'Connection failed. Try again.';
-    pairButton.style.backgroundColor = '#d8f41d';
-    pairButton.innerText = "CONNECT";
+    updateUIState('paired');
+  } catch (err) {
+    console.error(err);
+    updateUIState('failed');
   } finally {
     isConnecting = false;
   }
 }
 
-function handleIncoming(sensor, dataReceived) {
+function updateUIState(state) {
+  switch (state) {
+    case 'pairing':
+      pairButton.innerText = 'PAIRING';
+      pairButton.style.backgroundColor = 'gray';
+      BLEstatus.innerText = 'Connecting to device...';
+      break;
+    case 'paired':
+      pairButton.innerText = 'PAIRED';
+      pairButton.style.backgroundColor = 'green';
+      BLEstatus.innerText = 'Connected and receiving data.';
+      break;
+    case 'failed':
+      pairButton.innerText = 'CONNECT';
+      pairButton.style.backgroundColor = '#d8f41d';
+      BLEstatus.innerText = 'Connection failed. Try again.';
+      break;
+  }
+}
+
+// ---------------- Sensor Data Handler ----------------
+function handleIncoming(sensorName, dataReceived) {
   const now = Date.now();
   if (now - lastUpdateTime < updateInterval) return;
   lastUpdateTime = now;
 
-  const columns = Object.keys(sensor.data);
-  const typeMap = {
-    Float32: { fn: DataView.prototype.getFloat32, bytes: 4 }
-  };
+  const sensor = NiclaSenseME[sensorName];
+  const packet = new DataView(dataReceived.buffer);
+  const keys = Object.keys(sensor.data).filter(k => k !== 'timestamps');
 
   let pointer = 0;
-  sensor.structure.forEach((type, i) => {
-    const value = typeMap[type].fn.call(dataReceived, pointer, true);
-    sensor.data[columns[i]].push(value);
-    if (sensor.data[columns[i]].length > 100) {
-      sensor.data[columns[i]].shift();
+  keys.forEach((key, i) => {
+    const val = packet.getFloat32(pointer, true);
+    sensor.data[key].push(val);
+    if (sensor.data[key].length > MAX_POINTS) sensor.data[key].shift();
+    pointer += 4;
+  });
+
+  sensor.data.timestamps.push(now / 1000);
+  if (sensor.data.timestamps.length > MAX_POINTS) sensor.data.timestamps.shift();
+
+  updateChart(sensor.chart, sensor.data.timestamps, sensor.data);
+
+  if (sensorName === 'accelerometer') updateHumanModel(sensor.data);
+}
+
+// ---------------- Chart.js Setup ----------------
+function createChart(canvasId, labelPrefix) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: `${labelPrefix} X`, data: [], borderWidth: 1 },
+        { label: `${labelPrefix} Y`, data: [], borderWidth: 1 },
+        { label: `${labelPrefix} Z`, data: [], borderWidth: 1 }
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Time (s)' },
+          min: 0,
+          max: 10
+        },
+        y: {
+          title: { display: true, text: 'Value' }
+        }
+      },
+      plugins: {
+        legend: { labels: { color: 'white' } }
+      }
     }
-    pointer += typeMap[type].bytes;
-  });
-
-  updateGraph(sensor === NiclaSenseME.accelerometer ? 'accelerometer' : 'gyroscope', sensor.data);
-  if (sensor === NiclaSenseME.accelerometer) {
-    updateHumanModel(sensor.data);
-  }
-}
-
-function updateGraph(type, data) {
-  const graph = graphData[type];
-  const now = Date.now() / 1000;
-
-  graph.x.push(data.x?.at(-1) ?? data.Ax?.at(-1));
-  graph.y.push(data.y?.at(-1) ?? data.Ay?.at(-1));
-  graph.z.push(data.z?.at(-1) ?? data.Az?.at(-1));
-
-  if (graph.x.length > 100) {
-    graph.x.shift(); graph.y.shift(); graph.z.shift();
-  }
-
-  Plotly.react(type, [
-    { y: graph.x, name: 'X', type: 'scatter' },
-    { y: graph.y, name: 'Y', type: 'scatter' },
-    { y: graph.z, name: 'Z', type: 'scatter' }
-  ], {
-    xaxis: { title: 'Time' },
-    yaxis: { title: 'Value' }
   });
 }
 
-// Human model rendering
+function updateChart(chart, timestamps, data) {
+  const start = timestamps[0] ?? 0;
+  const labels = timestamps.map(t => +(t - start).toFixed(2));
+  chart.data.labels = labels;
+
+  chart.data.datasets[0].data = data.x ?? data.Ax;
+  chart.data.datasets[1].data = data.y ?? data.Ay;
+  chart.data.datasets[2].data = data.z ?? data.Az;
+
+  const max = labels.at(-1) ?? 10;
+  chart.options.scales.x.min = Math.max(0, max - 10);
+  chart.options.scales.x.max = max;
+  chart.update();
+}
+
+// ---------------- Human Arm Model ----------------
 let shoulder, elbow;
+const swingQuat = new THREE.Quaternion();
+const zAxis = new THREE.Vector3(0, 0, 1);
+let lastAngle = 0;
+const smoothing = 0.1;
+
 function initHumanModel() {
   const container = document.getElementById('humanModel');
   const width = container.clientWidth;
@@ -133,8 +170,10 @@ function initHumanModel() {
   renderer.setSize(width, height);
   container.appendChild(renderer.domElement);
 
-  const shoulderMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), shoulderMaterial);
+  shoulder = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xff0000 })
+  );
   scene.add(shoulder);
 
   const upperArm = new THREE.Mesh(
@@ -168,31 +207,22 @@ function initHumanModel() {
 }
 
 function updateHumanModel(sensorData) {
-  const Ax = sensorData.Ax.at(-1);
-  const Ay = sensorData.Ay.at(-1);
   const Az = sensorData.Az.at(-1);
+  if (Az == null) return;
 
-  if (Ax == null || Ay == null || Az == null) return;
+  const normalized = Math.max(-1, Math.min(1, Az / 9.81));
+  const targetAngle = normalized * (Math.PI / 4);
+  const swingAngle = lastAngle * (1 - smoothing) + targetAngle * smoothing;
+  lastAngle = swingAngle;
 
-  const magnitude = Math.sqrt(Ax ** 2 + Ay ** 2 + Az ** 2);
-  const normAx = Ax / magnitude;
-  const normAy = Ay / magnitude;
-  const normAz = Az / magnitude;
-
-  const pitch = Math.atan2(normAy, normAz);
-  const roll = Math.atan2(-normAx, Math.sqrt(normAy ** 2 + normAz ** 2));
-
-  if (shoulder) {
-    shoulder.rotation.x = pitch;
-    shoulder.rotation.y = roll;
-  }
-  if (elbow) {
-    elbow.rotation.z = roll;
-  }
+  swingQuat.setFromAxisAngle(zAxis, swingAngle);
+  shoulder?.quaternion.copy(swingQuat);
+  elbow?.quaternion.copy(swingQuat);
 }
 
+// ---------------- Init ----------------
 window.onload = () => {
   initHumanModel();
-  Plotly.newPlot('accelerometer', [], { title: 'Accelerometer Data' });
-  Plotly.newPlot('gyroscope', [], { title: 'Gyroscope Data' });
+  NiclaSenseME.accelerometer.chart = createChart('accelerometerChart', 'Accel');
+  NiclaSenseME.gyroscope.chart = createChart('gyroscopeChart', 'Gyro');
 };
