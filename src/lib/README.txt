@@ -1,1 +1,0 @@
-Source: https://github.com/arduino/ArduinoCore-mbed/tree/main/libraries/Nicla_System/src
