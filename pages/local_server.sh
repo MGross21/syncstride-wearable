@@ -1,21 +1,61 @@
 #!/bin/bash
 
-# This script spins up a local server on a specified port
+# Cross-platform local server script for HTML/JS/CSS with auto-reload (no inotify)
 
 cd "$(dirname "$0")"
 
-PORT=8000  # Default port
+DEFAULT_PORT=8000
+PORT="${1:-$DEFAULT_PORT}"
+BIND_ADDRESS="0.0.0.0"
 
-# Check if a port number is provided as an argument
-if [ $# -eq 1 ]; then
-    PORT=$1
+# Track server PID globally
+SERVER_PID=0
+
+# Kill any server on this port
+if lsof -i :"$PORT" &>/dev/null; then
+    echo "Shutting down previous server on port $PORT..."
+    fuser -k "$PORT"/tcp
+    sleep 1
 fi
 
-echo "Starting local server on port $PORT..."
-echo "Server will be accessible at: http://localhost:$PORT"
+# Start Python server
+start_server() {
+    echo "Starting server on port $PORT..."
+    python3 -m http.server "$PORT" --bind "$BIND_ADDRESS" &
+    SERVER_PID=$!
+    echo "Server PID: $SERVER_PID"
+}
 
-python3 -m http.server "$PORT"
+# Stop server
+stop_server() {
+    if [ $SERVER_PID -ne 0 ]; then
+        kill $SERVER_PID 2>/dev/null
+        wait $SERVER_PID 2>/dev/null
+        SERVER_PID=0
+    fi
+}
 
-echo "Server is running at: http://localhost:$PORT"
+# Poll for file changes (Windows-friendly)
+watch_files() {
+    echo "Watching for .html, .css, .js file changes..."
+    LAST_CHECKSUM=""
 
-# Note: Ensure Python is installed and available in your PATH
+    while true; do
+        CURRENT_CHECKSUM=$(find . -type f \( -name "*.html" -o -name "*.css" -o -name "*.js" \) -exec md5sum {} + 2>/dev/null | sort | md5sum)
+
+        if [ "$CURRENT_CHECKSUM" != "$LAST_CHECKSUM" ]; then
+            echo "Change detected. Restarting server..."
+            LAST_CHECKSUM=$CURRENT_CHECKSUM
+            stop_server
+            start_server
+        fi
+
+        sleep 2
+    done
+}
+
+# Trap CTRL+C to clean up
+trap stop_server EXIT
+
+start_server
+watch_files
