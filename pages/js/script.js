@@ -1,4 +1,5 @@
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
 
 const SERVICE_UUID = '19b10000-0000-537e-4f6c-d104768a1214';
 const pairButton = document.getElementById('pairButton');
@@ -208,7 +209,7 @@ function initHumanModel() {
 
   // Load upper arm model
   loader.load(
-    '../models/left_arm/left_upper_arm.gltf',
+    './models/left_arm/left_upper_arm.gltf',
     (gltf) => {
       shoulder = gltf.scene;
       const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -224,7 +225,7 @@ function initHumanModel() {
   );
 
   // Load lower arm model and attach to upper arm
-  loader.load('../models/left_arm/left_lower_arm.gltf', (gltf) => {
+  loader.load('./models/left_arm/left_lower_arm.gltf', (gltf) => {
     elbow = gltf.scene;
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const size = box.getSize(new THREE.Vector3());
