@@ -2,11 +2,15 @@
 #include "Nicla_System.h"
 
 // === Configuration ===
-const int PinOutput = 4;
-const int ForwardSwingThresh = 45;
-const int BackswingThresh = -ForwardSwingThresh;
-const int Pos1UpperThresh = 5;
-const int Pos1LowerThresh = -5;
+const int PIN_OUTPUT = 4;
+const int FORWARD_SWING_THRESH = 45;
+const int BACKSWING_THRESH = -FORWARD_SWING_THRESH;
+const int POS1_UPPER_THRESH = 5;
+const int POS1_LOWER_THRESH = -5;
+
+// === Printout ===
+const int PRINT_INTERVAL = 100; // milliseconds
+static unsigned long lastPrintTime = 0;
 
 // === Sensor ===
 SensorQuaternion quaternion(SENSOR_ID_RV);
@@ -21,7 +25,7 @@ void setup() {
   BHY2.begin(NICLA_STANDALONE);
   quaternion.begin();
 
-  pinMode(PinOutput, OUTPUT);
+  pinMode(PIN_OUTPUT, OUTPUT);
 }
 
 void loop() {
@@ -35,21 +39,35 @@ void loop() {
 
   // Calculate pitch angle (Y-axis)
   float sinp = 2.0f * (w * y - z * x);
-  int pitch = (abs(sinp) >= 1) ? copysign(90.0f, sinp) : asin(sinp) * 180.0f / PI;
-
-  // Output pitch over Serial
-  Serial.print("Pitch (Y): ");
-  Serial.print(pitch);
-  Serial.println("°");
-
-  // Determine LED color based on pitch
-  if (pitch > ForwardSwingThresh || pitch < BackswingThresh) {
-    nicla::leds.setColor(green);  // Swing detected
-  } else if (pitch > Pos1LowerThresh && pitch < Pos1UpperThresh) {
-    nicla::leds.setColor(blue); // Stationary
+  int pitch;
+  if (abs(sinp) >= 1) {
+    pitch = (sinp > 0) ? 90 : -90; // Avoid using `copysign` for efficiency
   } else {
-    nicla::leds.setColor(red);   // Transition zone
+    pitch = asin(sinp) * 180.0f / PI;
   }
 
-  delay(100);  // Update interval
+  // Print pitch angle at regular intervals
+  unsigned long currentTime = millis();
+  if (currentTime - lastPrintTime >= PRINT_INTERVAL) {
+    Serial.print("Pitch (Y): ");
+    Serial.print(pitch);
+    Serial.println("°");
+    lastPrintTime = currentTime;
+  }
+
+  // Update LED color based on pitch
+  updateLedColor(pitch);
+}
+
+void updateLedColor(int pitch) {
+  // Use a single comparison chain for efficiency
+  if (pitch > FORWARD_SWING_THRESH) {
+    nicla::leds.setColor(green);  // Forward swing detected
+  } else if (pitch < BACKSWING_THRESH) {
+    nicla::leds.setColor(green);  // Backward swing detected
+  } else if (pitch > POS1_LOWER_THRESH && pitch < POS1_UPPER_THRESH) {
+    nicla::leds.setColor(blue);   // Stationary
+  } else {
+    nicla::leds.setColor(red);    // Transition zone
+  }
 }
