@@ -1,5 +1,5 @@
-import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.174.0/examples/jsm/loaders/GLTFLoader.js';
 
 const SERVICE_UUID = '19b10000-0000-537e-4f6c-d104768a1214';
 const pairButton = document.getElementById('pairButton');
@@ -237,6 +237,13 @@ function initHumanModel() {
 
   camera.position.z = 10;
 
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft white light
+  scene.add(ambientLight);
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+  directionalLight.position.set(10, 10, 10);
+  scene.add(directionalLight);
+
   animate();
 }
 
@@ -277,3 +284,13 @@ window.onload = () => {
   NiclaSenseME.accelerometer.chart = createChart('accelerometerChart', 'Accel');
   NiclaSenseME.gyroscope.chart = createChart('gyroscopeChart', 'Gyro');
 };
+
+window.addEventListener('resize', () => {
+  const container = document.getElementById('humanModel');
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  renderer.setSize(width, height);
+});
