@@ -2,6 +2,8 @@
 
 # This script spins up a local server on a specified port
 
+cd "$(dirname "$0")"
+
 PORT=8000  # Default port
 
 # Check if a port number is provided as an argument
