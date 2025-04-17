@@ -38,7 +38,10 @@ async function connect() {
   try {
     updateConnectionState('pairing');
     const device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE_UUID] }]
+      filters: [
+        { namePrefix: 'Nicla Sense ME' }, // Ensure the device name matches Nicla Sense ME
+        { services: [SERVICE_UUID] }
+      ]
     });
     const server = await device.gatt.connect();
     const service = await server.getPrimaryService(SERVICE_UUID);
