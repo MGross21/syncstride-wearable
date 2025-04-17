@@ -1,5 +1,5 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
-import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 
 const SERVICE_UUID = '19b10000-0000-537e-4f6c-d104768a1214';
 const pairButton = document.getElementById('pairButton');
@@ -193,36 +193,34 @@ const zAxis = new THREE.Vector3(0, 0, 1);
 let lastAngle = 0;
 const smoothing = 0.1;
 let animationId;
+let renderer, scene, camera;
 
 function initHumanModel() {
   const container = document.getElementById('humanModel');
   const width = container.clientWidth;
   const height = container.clientHeight;
 
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-  const renderer = new THREE.WebGLRenderer();
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+  renderer = new THREE.WebGLRenderer();
   renderer.setSize(width, height);
   container.appendChild(renderer.domElement);
 
   const loader = new GLTFLoader();
 
   // Load upper arm model
-  loader.load(
-    './models/left_arm/left_upper_arm.gltf',
-    (gltf) => {
-      shoulder = gltf.scene;
-      const box = new THREE.Box3().setFromObject(gltf.scene);
-      const size = box.getSize(new THREE.Vector3());
-      gltf.scene.scale.set(1 / size.x, 1 / size.y, 1 / size.z);
-      shoulder.position.y = 4;
-      scene.add(shoulder);
-    },
-    undefined, // Progress callback (optional)
-    (error) => {
-      console.error('Error loading upper arm model:', error);
-    }
-  );
+  loader.load('./models/left_arm/left_upper_arm.gltf', (gltf) => {
+    shoulder = gltf.scene;
+    const box = new THREE.Box3().setFromObject(gltf.scene);
+    const size = box.getSize(new THREE.Vector3());
+    gltf.scene.scale.set(1 / size.x, 1 / size.y, 1 / size.z);
+    shoulder.position.y = 4;
+    scene.add(shoulder);
+  },
+  undefined,
+  (error) => {
+    console.error('Error loading upper arm model:', error);
+  });
 
   // Load lower arm model and attach to upper arm
   loader.load('./models/left_arm/left_lower_arm.gltf', (gltf) => {
@@ -248,7 +246,10 @@ function animate() {
 }
 
 function stopAnimation() {
-  cancelAnimationFrame(animationId);
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
 }
 
 function updateHumanModel(sensorData) {
@@ -260,9 +261,14 @@ function updateHumanModel(sensorData) {
   const swingAngle = lastAngle * (1 - smoothing) + targetAngle * smoothing;
   lastAngle = swingAngle;
 
-  swingQuat.setFromAxisAngle(zAxis, swingAngle);
-  shoulder?.quaternion.copy(swingQuat);
-  elbow?.quaternion.copy(swingQuat);
+  const shoulderAngle = normalized * (Math.PI / 4); // Adjust for shoulder
+  const elbowAngle = normalized * (Math.PI / 6);    // Adjust for elbow
+
+  const shoulderQuat = new THREE.Quaternion().setFromAxisAngle(zAxis, shoulderAngle);
+  const elbowQuat = new THREE.Quaternion().setFromAxisAngle(zAxis, elbowAngle);
+
+  shoulder?.quaternion.copy(shoulderQuat);
+  elbow?.quaternion.copy(elbowQuat);
 }
 
 // ---------------- Init ----------------
