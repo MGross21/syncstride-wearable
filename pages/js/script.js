@@ -1,6 +1,7 @@
 const SERVICE_UUID = '19b10000-0000-537e-4f6c-d104768a1214';
 const pairButton = document.getElementById('pairButton');
-const BLEstatus = document.getElementById('bluetooth');
+const calibrateButton = document.getElementById('calibrateButton');
+const BLEstatus = document.getElementById('status_text');
 let isConnecting = false;
 let lastUpdateTime = 0;
 const updateInterval = 50;
@@ -32,7 +33,7 @@ async function connect() {
   isConnecting = true;
 
   try {
-    updateUIState('pairing');
+    updateConnectionState('pairing');
     const device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [SERVICE_UUID] }]
     });
@@ -48,16 +49,16 @@ async function connect() {
       );
     }
 
-    updateUIState('paired');
+    updateConnectionState('paired');
   } catch (err) {
     console.error(err);
-    updateUIState('failed');
+    updateConnectionState('failed');
   } finally {
     isConnecting = false;
   }
 }
 
-function updateUIState(state) {
+function updateConnectionState(state) {
   switch (state) {
     case 'pairing':
       pairButton.innerText = 'PAIRING';
@@ -76,6 +77,35 @@ function updateUIState(state) {
       break;
   }
 }
+
+// ---------------- Calibrate Button ----------------
+
+let calibrationStep = 0;
+
+calibrateButton.addEventListener('click', () => {
+  switch (calibrationStep) {
+    case 0:
+      calibrateButton.innerText = 'CALIBRATE IDLE';
+      calibrateButton.style.backgroundColor = 'blue';
+      calibrateButton.style.color = 'white';
+      calibrationStep++;
+      break;
+    case 1:
+      calibrateButton.innerText = 'CALIBRATE FRONT SWING';
+      calibrationStep++;
+      break;
+    case 2:
+      calibrateButton.innerText = 'CALIBRATE BACK SWING';
+      calibrationStep++;
+      break;
+    default:
+      calibrateButton.innerText = 'CALIBRATE';
+      calibrateButton.style.backgroundColor = '';
+      calibrateButton.style.color = '';
+      calibrationStep = 0;
+      break;
+  }
+});
 
 // ---------------- Sensor Data Handler ----------------
 function handleIncoming(sensorName, dataReceived) {
