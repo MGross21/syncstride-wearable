@@ -2,7 +2,7 @@
 #include "Nicla_System.h"
 
 // === Configuration ===
-const int PIN_OUTPUT = 4;
+const int OUTPUT_PIN = 4;
 const int FORWARD_SWING_THRESH = 45;
 const int BACKSWING_THRESH = -FORWARD_SWING_THRESH;
 const int POS1_UPPER_THRESH = 5;
@@ -25,7 +25,7 @@ void setup() {
   BHY2.begin(NICLA_STANDALONE);
   quaternion.begin();
 
-  pinMode(PIN_OUTPUT, OUTPUT);
+  pinMode(OUTPUT_PIN, OUTPUT);
 }
 
 void loop() {
