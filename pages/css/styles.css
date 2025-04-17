@@ -31,7 +31,7 @@ body {
 
 #calibrateButton {
   width: 120px;
-  height: 40px;
+  height: 50px;
 }
 
 .container {
@@ -69,7 +69,7 @@ body {
 .doublegraph {
   width: 100%;
   max-width: 600px;
-  height: 300px;
+  aspect-ratio: 2 / 1; /* Maintain a 2:1 width-to-height ratio */
 }
 
 .human-widget {
@@ -111,17 +111,26 @@ body {
   gap: 16px;
 }
 
+/* Adjusting the top chart area to maintain a square ratio and optimizing space usage */
 .merged-widget .doublegraph {
-  flex: 1;
-  max-width: 50%;
+  flex: 2; /* Allow the graph to take up more space */
+  max-width: 100%;
+  aspect-ratio: 1 / 1; /* Maintain a square ratio */
 }
 
 .merged-widget .text-data {
-  flex: 1;
+  flex: 1; /* Squeeze the text area */
   display: flex;
   justify-content: center;
   align-items: center;
   text-align: center;
+  font-size: 24px; /* Increase text size */
+  font-weight: bold;
+}
+
+/* Removing angle text and only showing the number */
+.merged-widget .text-data .angle-text {
+  display: none; /* Hide angle text */
 }
 
 .merged-widget .human-widget {
