@@ -1,28 +1,25 @@
 import * as THREE from 'https://esm.sh/three@0.174.0';
 import { GLTFLoader } from 'https://esm.sh/three@0.174.0/examples/jsm/loaders/GLTFLoader.js';
 
-const SERVICE_UUID = '19b10000-0000-537e-4f6c-d104768a1214';
+const SERVICE_UUID = '12345678-0000-1000-8000-00805f9b34fb';
+const PITCH_CHARACTERISTIC_UUID = '12345678-0001-1000-8000-00805f9b34fb';
+const CALIB_CHARACTERISTIC_UUID = '12345678-0003-1000-8000-00805f9b34fb';
+
 const pairButton = document.getElementById('pairButton');
 const calibrateButton = document.getElementById('calibrateButton');
 const BLEstatus = document.getElementById('status_text');
 let isConnecting = false;
 let lastUpdateTime = 0;
 const updateInterval = 50;
-const MAX_POINTS = 200; // ~10 seconds of data
+const MAX_POINTS = 200;
 
-// Store chart + sensor data
-const NiclaSenseME = {
-  accelerometer: {
-    uuid: '19b10000-5001-537e-4f6c-d104768a1214',
-    data: { Ax: [], Ay: [], Az: [], timestamps: [] },
-    chart: null,
-  },
-  gyroscope: {
-    uuid: '19b10000-6001-537e-4f6c-d104768a1214',
-    data: { x: [], y: [], z: [], timestamps: [] },
-    chart: null,
-  }
+const pitchData = {
+  values: [],
+  timestamps: []
 };
+
+let pitchCharacteristic = null;
+let calibCharacteristic = null;
 
 if ("bluetooth" in navigator) {
   pairButton.addEventListener('click', connect);
@@ -30,7 +27,6 @@ if ("bluetooth" in navigator) {
   BLEstatus.innerText = "Error: This browser doesn't support Web Bluetooth.";
 }
 
-// ---------------- BLE Connect ----------------
 async function connect() {
   if (isConnecting) return;
   isConnecting = true;
@@ -39,21 +35,20 @@ async function connect() {
     updateConnectionState('pairing');
     const device = await navigator.bluetooth.requestDevice({
       filters: [
-        { namePrefix: 'Nicla Sense ME' }, // Ensure the device name matches Nicla Sense ME
+        { namePrefix: 'SyncStride' },
         { services: [SERVICE_UUID] }
       ]
     });
     const server = await device.gatt.connect();
     const service = await server.getPrimaryService(SERVICE_UUID);
 
-    for (const name in NiclaSenseME) {
-      const sensor = NiclaSenseME[name];
-      sensor.characteristic = await service.getCharacteristic(sensor.uuid);
-      await sensor.characteristic.startNotifications();
-      sensor.characteristic.addEventListener('characteristicvaluechanged', e =>
-        handleIncoming(name, e.target.value)
-      );
-    }
+    pitchCharacteristic = await service.getCharacteristic(PITCH_CHARACTERISTIC_UUID);
+    calibCharacteristic = await service.getCharacteristic(CALIB_CHARACTERISTIC_UUID);
+
+    await pitchCharacteristic.startNotifications();
+    pitchCharacteristic.addEventListener('characteristicvaluechanged', e =>
+      handleIncomingPitch(e.target.value)
+    );
 
     updateConnectionState('paired');
   } catch (err) {
@@ -85,24 +80,25 @@ function updateConnectionState(state) {
   }
 }
 
-// ---------------- Calibrate Button ----------------
-
 let calibrationStep = 0;
-
 calibrateButton.addEventListener('click', () => {
+  if (!calibCharacteristic) return;
   switch (calibrationStep) {
     case 0:
       calibrateButton.innerText = 'CALIBRATE IDLE';
       calibrateButton.style.backgroundColor = 'blue';
       calibrateButton.style.color = 'white';
+      calibCharacteristic.writeValue(Uint8Array.of(1));
       calibrationStep++;
       break;
     case 1:
       calibrateButton.innerText = 'CALIBRATE FRONT SWING';
+      calibCharacteristic.writeValue(Uint8Array.of(2));
       calibrationStep++;
       break;
     case 2:
       calibrateButton.innerText = 'CALIBRATE BACK SWING';
+      calibCharacteristic.writeValue(Uint8Array.of(3));
       calibrationStep++;
       break;
     default:
@@ -114,46 +110,32 @@ calibrateButton.addEventListener('click', () => {
   }
 });
 
-// ---------------- Sensor Data Handler ----------------
-function handleIncoming(sensorName, dataReceived) {
+function handleIncomingPitch(dataReceived) {
   const now = Date.now();
   if (now - lastUpdateTime < updateInterval) return;
   lastUpdateTime = now;
 
-  const sensor = NiclaSenseME[sensorName];
   const packet = new DataView(dataReceived.buffer);
-  const keys = Object.keys(sensor.data).filter(k => k !== 'timestamps');
+  const pitch = packet.getFloat32(0, true);
 
-  let pointer = 0;
-  keys.forEach((key, i) => {
-    const val = packet.getFloat32(pointer, true);
-    sensor.data[key].push(val);
-    if (sensor.data[key].length > MAX_POINTS) sensor.data[key].shift();
-    pointer += 4;
-  });
+  pitchData.values.push(pitch);
+  if (pitchData.values.length > MAX_POINTS) pitchData.values.shift();
 
-  sensor.data.timestamps.push(now / 1000);
-  if (sensor.data.timestamps.length > MAX_POINTS) sensor.data.timestamps.shift();
+  pitchData.timestamps.push(now / 1000);
+  if (pitchData.timestamps.length > MAX_POINTS) pitchData.timestamps.shift();
 
-  // Update only gyroscope chart
-  if (sensorName === 'gyroscope') {
-    updateChart(sensor.chart, sensor.data.timestamps, sensor.data);
-  }
-
-  if (sensorName === 'accelerometer') updateHumanModel(sensor.data);
+  updateChart(pitchData.timestamps, pitchData.values);
+  updateHumanModel(pitch);
 }
 
-// ---------------- Chart.js Setup ----------------
-function createChart(canvasId, labelPrefix) {
+function createChart(canvasId) {
   const ctx = document.getElementById(canvasId).getContext('2d');
   return new Chart(ctx, {
     type: 'line',
     data: {
       labels: [],
       datasets: [
-        { label: `${labelPrefix} X`, data: [], borderWidth: 1 },
-        { label: `${labelPrefix} Y`, data: [], borderWidth: 1 },
-        { label: `${labelPrefix} Z`, data: [], borderWidth: 1 }
+        { label: 'Pitch', data: [], borderWidth: 2 }
       ]
     },
     options: {
@@ -167,7 +149,7 @@ function createChart(canvasId, labelPrefix) {
           max: 10
         },
         y: {
-          title: { display: true, text: 'Value' }
+          title: { display: true, text: 'Pitch (°)' }
         }
       },
       plugins: {
@@ -177,24 +159,19 @@ function createChart(canvasId, labelPrefix) {
   });
 }
 
-function updateChart(chart, timestamps, data) {
+function updateChart(timestamps, values) {
   const start = timestamps[0] ?? 0;
   const labels = timestamps.map(t => +(t - start).toFixed(2));
-  chart.data.labels = labels;
-
-  chart.data.datasets[0].data = data.x ?? data.Ax ?? [];
-  chart.data.datasets[1].data = data.y ?? data.Ay ?? [];
-  chart.data.datasets[2].data = data.z ?? data.Az ?? [];
+  pitchChart.data.labels = labels;
+  pitchChart.data.datasets[0].data = values;
 
   const max = labels.at(-1) ?? 10;
-  chart.options.scales.x.min = Math.max(0, max - 10);
-  chart.options.scales.x.max = max;
-  chart.update();
+  pitchChart.options.scales.x.min = Math.max(0, max - 10);
+  pitchChart.options.scales.x.max = max;
+  pitchChart.update();
 }
 
-// ---------------- Human Arm Model ----------------
 let shoulder, elbow;
-const swingQuat = new THREE.Quaternion();
 const zAxis = new THREE.Vector3(0, 0, 1);
 let lastAngle = 0;
 const smoothing = 0.1;
@@ -214,7 +191,6 @@ function initHumanModel() {
 
   const loader = new GLTFLoader();
 
-  // Load upper arm model
   loader.load('./models/left_arm/left_upper_arm.glb', (gltf) => {
     shoulder = gltf.scene;
     const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -222,28 +198,24 @@ function initHumanModel() {
     gltf.scene.scale.set(1 / size.x, 1 / size.y, 1 / size.z);
     shoulder.position.y = 4;
     scene.add(shoulder);
-  },
-  undefined,
-  (error) => {
+  }, undefined, (error) => {
     console.error('Error loading upper arm model:', error);
   });
 
-  // Load lower arm model and attach to upper arm
   loader.load('./models/left_arm/left_lower_arm.glb', (gltf) => {
     elbow = gltf.scene;
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const size = box.getSize(new THREE.Vector3());
     gltf.scene.scale.set(1 / size.x, 1 / size.y, 1 / size.z);
-    elbow.position.y = -2; // Position relative to the upper arm
+    elbow.position.y = -2;
     shoulder.add(elbow);
-  },
-  undefined, (error) => {
-      console.error('Error loading lower arm model:', error);
-    });
+  }, undefined, (error) => {
+    console.error('Error loading lower arm model:', error);
+  });
 
   camera.position.z = 10;
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft white light
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
   scene.add(ambientLight);
 
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -258,36 +230,23 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-function stopAnimation() {
-  if (animationId) {
-    cancelAnimationFrame(animationId);
-    animationId = null;
-  }
-}
-
-function updateHumanModel(sensorData) {
-  const Az = sensorData.Az.at(-1);
-  if (Az == null) return;
-
-  const normalized = Math.max(-1, Math.min(1, Az / 9.81));
+function updateHumanModel(pitch) {
+  const normalized = Math.max(-1, Math.min(1, pitch / 90));
   const targetAngle = normalized * (Math.PI / 4);
   const swingAngle = lastAngle * (1 - smoothing) + targetAngle * smoothing;
   lastAngle = swingAngle;
 
-  const shoulderAngle = normalized * (Math.PI / 4); // Adjust for shoulder
-  const elbowAngle = normalized * (Math.PI / 6);    // Adjust for elbow
-
-  const shoulderQuat = new THREE.Quaternion().setFromAxisAngle(zAxis, shoulderAngle);
-  const elbowQuat = new THREE.Quaternion().setFromAxisAngle(zAxis, elbowAngle);
+  const shoulderQuat = new THREE.Quaternion().setFromAxisAngle(zAxis, swingAngle);
+  const elbowQuat = new THREE.Quaternion().setFromAxisAngle(zAxis, swingAngle / 1.5);
 
   shoulder?.quaternion.copy(shoulderQuat);
   elbow?.quaternion.copy(elbowQuat);
 }
 
-// ---------------- Init ----------------
+let pitchChart;
 window.onload = () => {
   initHumanModel();
-  NiclaSenseME.gyroscope.chart = createChart('gyroscopeChart', 'Gyro');
+  pitchChart = createChart('pitchChart');
 };
 
 window.addEventListener('resize', () => {
