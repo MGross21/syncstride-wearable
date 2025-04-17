@@ -132,7 +132,10 @@ function handleIncoming(sensorName, dataReceived) {
   sensor.data.timestamps.push(now / 1000);
   if (sensor.data.timestamps.length > MAX_POINTS) sensor.data.timestamps.shift();
 
-  updateChart(sensor.chart, sensor.data.timestamps, sensor.data);
+  // Update only gyroscope chart
+  if (sensorName === 'gyroscope') {
+    updateChart(sensor.chart, sensor.data.timestamps, sensor.data);
+  }
 
   if (sensorName === 'accelerometer') updateHumanModel(sensor.data);
 }
@@ -281,7 +284,6 @@ function updateHumanModel(sensorData) {
 // ---------------- Init ----------------
 window.onload = () => {
   initHumanModel();
-  NiclaSenseME.accelerometer.chart = createChart('accelerometerChart', 'Accel');
   NiclaSenseME.gyroscope.chart = createChart('gyroscopeChart', 'Gyro');
 };
 

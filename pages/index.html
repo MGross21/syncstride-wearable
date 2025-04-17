@@ -23,19 +23,21 @@
       <button id="calibrateButton">CALIBRATE</button>
     </div>
 
-    <div class="double widget">
-      <div class="label">Accelerometer</div>
-      <canvas id="accelerometerChart" class="doublegraph"></canvas>
-    </div>
-
-    <div class="double widget">
-      <div class="label">Gyroscope</div>
-      <canvas id="gyroscopeChart" class="doublegraph"></canvas>
-    </div>
-
-    <div class="human-widget widget" id="humanModelContainer">
+    <div class="merged-widget widget">
       <div class="label">Human Arm Motion</div>
-      <div id="humanModel"></div>
+      
+      <div class="top-section">
+        <canvas id="gyroscopeChart" class="doublegraph"></canvas>
+        <div class="text-data">
+          <div class="angle-display">
+            <span id="armAngle">Arm Angle: 0°</span>
+          </div>
+        </div>
+      </div>
+      
+      <div id="humanModelContainer" class="human-widget">
+        <div id="humanModel"></div>
+      </div>
     </div>
   </div>
 
