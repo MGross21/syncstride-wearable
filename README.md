@@ -4,6 +4,6 @@
 
 ## Contributors
 
-@MGross21
-Glen Stevens
-Jonathan Hernandez
+* @MGross21
+* Glen Stevens
+* Jonathan Hernandez
