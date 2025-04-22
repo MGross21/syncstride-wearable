@@ -1,9 +1,16 @@
 import * as THREE from 'https://esm.sh/three@0.174.0';
 import { GLTFLoader } from 'https://esm.sh/three@0.174.0/examples/jsm/loaders/GLTFLoader.js';
 
-const SERVICE_UUID = '12345678-0000-1000-8000-00805f9b34fb';
-const PITCH_CHARACTERISTIC_UUID = '12345678-0001-1000-8000-00805f9b34fb';
-const CALIB_CHARACTERISTIC_UUID = '12345678-0003-1000-8000-00805f9b34fb';
+function setUUID(uuid) {
+  if (uuid.length !== 4) {
+    throw new Error('UUID must be 4 characters long');
+  }
+  return `12345678-${uuid}-1000-8000-00805f9b34fb`;
+}
+
+const SERVICE_UUID = setUUID('0000');
+const PITCH_CHARACTERISTIC_UUID = setUUID('0001');
+const CALIB_CHARACTERISTIC_UUID = setUUID('0003');
 
 const pairButton = document.getElementById('pairButton');
 const calibrateButton = document.getElementById('calibrateButton');
