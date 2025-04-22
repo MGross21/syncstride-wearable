@@ -1,12 +1,19 @@
 #include "Nicla_System.h"
 #include "Arduino_BHY2.h"
 #include <ArduinoBLE.h>
-#include <Preferences.h>
+#include <EEPROM.h>
 
 // === BLE Custom UUIDs ===
 #define PITCH_SERVICE_UUID        "12345678-0000-1000-8000-00805f9b34fb"
 #define PITCH_CHARACTERISTIC_UUID "12345678-0001-1000-8000-00805f9b34fb"
 #define CALIB_COMMAND_UUID        "12345678-0003-1000-8000-00805f9b34fb"
+
+// === EEPROM Configuration ===
+#define EEPROM_SIZE 16
+#define ADDR_HAS_DATA 0
+#define ADDR_IDLE_PITCH 1
+#define ADDR_FORWARD_PITCH 5
+#define ADDR_BACKWARD_PITCH 9
 
 // === BLE Setup ===
 BLEService pitchService(PITCH_SERVICE_UUID);
@@ -15,13 +22,11 @@ BLECharacteristic calibCommandCharacteristic(CALIB_COMMAND_UUID, BLEWrite, 1);
 
 // === Sensor and Calibration Variables ===
 SensorQuaternion quaternion(SENSOR_ID_RV);
-Preferences prefs;
-
 float idlePitch = 0;
 float forwardSwingPitch = 45;
 float backwardSwingPitch = -45;
 
-// Tracking calibration state
+// === Tracking calibration state ===
 bool calibratedIdle = false;
 bool calibratedForward = false;
 bool calibratedBackward = false;
@@ -33,13 +38,14 @@ unsigned long lastPrintTime = 0;
 void setup() {
   Serial.begin(115200);
 
-  // Initialize Nicla and sensor
+  // Initialize Nicla and sensors
   nicla::begin();
   nicla::leds.begin();
   BHY2.begin(NICLA_STANDALONE);
   quaternion.begin();
 
-  // Load from flash or use defaults
+  // Initialize EEPROM and load calibration
+  EEPROM.begin(EEPROM_SIZE);
   loadCalibration();
 
   // Setup BLE
@@ -93,7 +99,7 @@ void loop() {
   }
 }
 
-// === Quaternion to Pitch Calculation ===
+// === Compute Pitch from Quaternion ===
 float computePitch() {
   float x = quaternion.x();
   float y = quaternion.y();
@@ -110,7 +116,7 @@ float computePitch() {
   return pitch;
 }
 
-// === LED Feedback ===
+// === LED Color Feedback Based on Pitch ===
 void updateLedColor(float pitch) {
   if (pitch > forwardSwingPitch + 10) {
     nicla::leds.setColor(green);
@@ -119,13 +125,13 @@ void updateLedColor(float pitch) {
   } else if (abs(pitch - idlePitch) < 5) {
     nicla::leds.setColor(blue);
   } else {
-    nicla::leds.setColor(255, 100, 0); // orange
+    nicla::leds.setColor(255, 100, 0);  // Orange
   }
 }
 
-// === BLE Command Handler ===
+// === Handle Incoming Calibration Commands from BLE Central ===
 void onCalibCommandReceived(BLEDevice central, BLECharacteristic characteristic) {
-  byte command = characteristic.value();
+  byte command = characteristic.value()[0];
   float currentPitch = computePitch();
 
   switch (command) {
@@ -149,39 +155,39 @@ void onCalibCommandReceived(BLEDevice central, BLECharacteristic characteristic)
       return;
   }
 
-  // Auto-save if all positions calibrated
+  // If all positions calibrated, save to EEPROM
   if (calibratedIdle && calibratedForward && calibratedBackward) {
     saveCalibration();
-    Serial.println("All positions calibrated. Calibration saved to NVM.");
+    Serial.println("All positions calibrated. Calibration saved to EEPROM.");
   }
 }
 
-// === Save Calibration to Flash ===
+// === Save Calibration Values to EEPROM ===
 void saveCalibration() {
-  prefs.begin("calib", false);
-  prefs.putFloat("idle", idlePitch);
-  prefs.putFloat("fwd", forwardSwingPitch);
-  prefs.putFloat("back", backwardSwingPitch);
-  prefs.putBool("hasData", true);  // Mark as valid
-  prefs.end();
+  EEPROM.put(ADDR_IDLE_PITCH, idlePitch);
+  EEPROM.put(ADDR_FORWARD_PITCH, forwardSwingPitch);
+  EEPROM.put(ADDR_BACKWARD_PITCH, backwardSwingPitch);
+  EEPROM.write(ADDR_HAS_DATA, 1);  // Valid marker
+  EEPROM.commit();
+
+  Serial.println("Calibration saved to EEPROM.");
 }
 
-// === Load Calibration or Fallback to Defaults ===
+// === Load Calibration from EEPROM or Use Defaults ===
 void loadCalibration() {
-  prefs.begin("calib", true);
-  bool hasData = prefs.getBool("hasData", false);
-  if (hasData) {
-    idlePitch = prefs.getFloat("idle", 0);
-    forwardSwingPitch = prefs.getFloat("fwd", 45);
-    backwardSwingPitch = prefs.getFloat("back", -45);
-    Serial.println("Loaded calibration from flash.");
+  byte hasData = EEPROM.read(ADDR_HAS_DATA);
+
+  if (hasData == 1) {
+    EEPROM.get(ADDR_IDLE_PITCH, idlePitch);
+    EEPROM.get(ADDR_FORWARD_PITCH, forwardSwingPitch);
+    EEPROM.get(ADDR_BACKWARD_PITCH, backwardSwingPitch);
+    Serial.println("Loaded calibration from EEPROM.");
   } else {
     idlePitch = 0;
     forwardSwingPitch = 45;
     backwardSwingPitch = -45;
     Serial.println("No saved calibration found. Using defaults.");
   }
-  prefs.end();
 
   Serial.print("Idle Pitch: "); Serial.println(idlePitch);
   Serial.print("Forward Pitch: "); Serial.println(forwardSwingPitch);
