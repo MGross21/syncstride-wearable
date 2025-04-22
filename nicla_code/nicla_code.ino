@@ -1,18 +1,11 @@
 #include "Nicla_System.h"
 #include "Arduino_BHY2.h"
 #include <ArduinoBLE.h>
-#include "mbed.h"
-#include <LittleFileSystem.h>
-#include <FlashIAPBlockDevice.h>
 
 // === BLE Custom UUIDs ===
 #define PITCH_SERVICE_UUID        "12345678-0000-1000-8000-00805f9b34fb"
 #define PITCH_CHARACTERISTIC_UUID "12345678-0001-1000-8000-00805f9b34fb"
 #define CALIB_COMMAND_UUID        "12345678-0003-1000-8000-00805f9b34fb"
-
-// === Flash Filesystem Setup ===
-FlashIAPBlockDevice bd(0x100000, 64 * 1024);  // Use top 64KB of flash
-LittleFileSystem fs("fs");
 
 // === BLE Setup ===
 BLEService pitchService(PITCH_SERVICE_UUID);
@@ -42,13 +35,9 @@ void setup() {
   BHY2.begin(NICLA_STANDALONE);
   quaternion.begin();
 
-  int err = fs.mount(&bd);
-  if (err) {
-    Serial.println("Mount failed, formatting...");
-    fs.reformat(&bd);
-  }
-
-  loadCalibration();
+  idlePitch = 0;
+  forwardSwingPitch = 45;
+  backwardSwingPitch = -45;
 
   if (!BLE.begin()) {
     Serial.println("BLE init failed!");
@@ -146,40 +135,6 @@ void onCalibCommandReceived(BLEDevice central, BLECharacteristic characteristic)
   }
 
   if (calibratedIdle && calibratedForward && calibratedBackward) {
-    saveCalibration();
-    Serial.println("All positions calibrated. Calibration saved to flash.");
+    Serial.println("All positions calibrated.");
   }
-}
-
-void saveCalibration() {
-  FILE* f = fopen("/fs/calib.bin", "wb");
-  if (f) {
-    fwrite(&idlePitch, sizeof(float), 1, f);
-    fwrite(&forwardSwingPitch, sizeof(float), 1, f);
-    fwrite(&backwardSwingPitch, sizeof(float), 1, f);
-    fclose(f);
-    Serial.println("Calibration saved to flash.");
-  } else {
-    Serial.println("Failed to save calibration.");
-  }
-}
-
-void loadCalibration() {
-  FILE* f = fopen("/fs/calib.bin", "rb");
-  if (f) {
-    fread(&idlePitch, sizeof(float), 1, f);
-    fread(&forwardSwingPitch, sizeof(float), 1, f);
-    fread(&backwardSwingPitch, sizeof(float), 1, f);
-    fclose(f);
-    Serial.println("Loaded calibration from flash.");
-  } else {
-    idlePitch = 0;
-    forwardSwingPitch = 45;
-    backwardSwingPitch = -45;
-    Serial.println("No saved calibration found. Using defaults.");
-  }
-
-  Serial.print("Idle Pitch: "); Serial.println(idlePitch);
-  Serial.print("Forward Pitch: "); Serial.println(forwardSwingPitch);
-  Serial.print("Backward Pitch: "); Serial.println(backwardSwingPitch);
 }
