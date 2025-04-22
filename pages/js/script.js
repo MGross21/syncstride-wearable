@@ -157,9 +157,15 @@ function handleIncomingPitch(dataReceived) {
 const FRONT_SWING = 45;
 const BACK_SWING = -45;
 
-// Update the chart creation to include permanent lines for front and back swing
+// Ensure the canvas element exists before creating the chart
 function createChart(canvasId) {
-  const ctx = document.getElementById(canvasId).getContext('2d');
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) {
+    console.error(`Canvas element with id '${canvasId}' not found.`);
+    return null;
+  }
+
+  const ctx = canvas.getContext('2d');
   return new Chart(ctx, {
     type: 'line',
     data: {
@@ -191,7 +197,13 @@ function createChart(canvasId) {
   });
 }
 
+// Ensure pitchChart is initialized before updating it
 function updateChart(timestamps, values) {
+  if (!pitchChart) {
+    console.error('pitchChart is not initialized.');
+    return;
+  }
+
   const start = timestamps[0] ?? 0;
   const labels = timestamps.map(t => +(t - start).toFixed(2));
   pitchChart.data.labels = labels;
@@ -210,6 +222,7 @@ const smoothing = 0.1;
 let animationId;
 let renderer, scene, camera;
 
+// Updated the initialization of the human model to fix rendering issues and ensure proper scaling and positioning.
 function initHumanModel() {
   const container = document.getElementById('humanModel');
   const width = container.clientWidth;
@@ -217,18 +230,18 @@ function initHumanModel() {
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-  renderer = new THREE.WebGLRenderer();
+  renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.innerHTML = ''; // Clear any existing content
   container.appendChild(renderer.domElement);
 
   const loader = new GLTFLoader();
 
   loader.load('./models/left_arm/left_upper_arm.glb', (gltf) => {
     shoulder = gltf.scene;
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    const size = box.getSize(new THREE.Vector3());
-    gltf.scene.scale.set(1 / size.x, 1 / size.y, 1 / size.z);
-    shoulder.position.y = 4;
+    shoulder.scale.set(0.5, 0.5, 0.5); // Adjust scale for better fit
+    shoulder.position.set(0, 2, 0); // Adjust position
     scene.add(shoulder);
   }, undefined, (error) => {
     console.error('Error loading upper arm model:', error);
@@ -236,16 +249,14 @@ function initHumanModel() {
 
   loader.load('./models/left_arm/left_lower_arm.glb', (gltf) => {
     elbow = gltf.scene;
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    const size = box.getSize(new THREE.Vector3());
-    gltf.scene.scale.set(1 / size.x, 1 / size.y, 1 / size.z);
-    elbow.position.y = -2;
-    shoulder.add(elbow);
+    elbow.scale.set(0.5, 0.5, 0.5); // Adjust scale for better fit
+    elbow.position.set(0, -2, 0); // Adjust position relative to shoulder
+    shoulder?.add(elbow);
   }, undefined, (error) => {
     console.error('Error loading lower arm model:', error);
   });
 
-  camera.position.z = 10;
+  camera.position.set(0, 0, 10); // Adjust camera position for better view
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
   scene.add(ambientLight);
