@@ -135,6 +135,11 @@ function handleIncomingPitch(dataReceived) {
   updateHumanModel(pitch);
 }
 
+// Add constants for front and back swing values
+const FRONT_SWING = 45;
+const BACK_SWING = -45;
+
+// Update the chart creation to include permanent lines for front and back swing
 function createChart(canvasId) {
   const ctx = document.getElementById(canvasId).getContext('2d');
   return new Chart(ctx, {
@@ -142,7 +147,9 @@ function createChart(canvasId) {
     data: {
       labels: [],
       datasets: [
-        { label: 'Pitch', data: [], borderWidth: 2 }
+        { label: 'Pitch', data: [], borderWidth: 2 },
+        { label: 'Front Swing', data: Array(MAX_POINTS).fill(FRONT_SWING), borderWidth: 1, borderDash: [5, 5], borderColor: 'green', pointRadius: 0 },
+        { label: 'Back Swing', data: Array(MAX_POINTS).fill(BACK_SWING), borderWidth: 1, borderDash: [5, 5], borderColor: 'red', pointRadius: 0 }
       ]
     },
     options: {
@@ -237,6 +244,7 @@ function animate() {
   renderer.render(scene, camera);
 }
 
+// Update the pitch text display
 function updateHumanModel(pitch) {
   const normalized = Math.max(-1, Math.min(1, pitch / 90));
   const targetAngle = normalized * (Math.PI / 4);
@@ -248,6 +256,9 @@ function updateHumanModel(pitch) {
 
   shoulder?.quaternion.copy(shoulderQuat);
   elbow?.quaternion.copy(elbowQuat);
+
+  // Update the pitch text display
+  document.getElementById('armAngle').innerText = `Arm Angle: ${pitch.toFixed(2)}°`;
 }
 
 let pitchChart;

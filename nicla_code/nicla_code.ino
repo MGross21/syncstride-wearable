@@ -9,6 +9,10 @@
 #define PITCH_CHARACTERISTIC_UUID UUID_PREFIX "0001" UUID_SUFFIX
 #define CALIB_COMMAND_UUID        UUID_PREFIX "0003" UUID_SUFFIX
 
+// Add BLE characteristics for front and back swing
+BLEFloatCharacteristic frontSwingCharacteristic(UUID_PREFIX "0004" UUID_SUFFIX, BLERead);
+BLEFloatCharacteristic backSwingCharacteristic(UUID_PREFIX "0005" UUID_SUFFIX, BLERead);
+
 // === BLE Setup ===
 BLEService pitchService(PITCH_SERVICE_UUID);
 BLEFloatCharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify);
@@ -50,9 +54,14 @@ void setup() {
   BLE.setAdvertisedService(pitchService);
   pitchService.addCharacteristic(pitchCharacteristic);
   pitchService.addCharacteristic(calibCommandCharacteristic);
+  pitchService.addCharacteristic(frontSwingCharacteristic);
+  pitchService.addCharacteristic(backSwingCharacteristic);
   calibCommandCharacteristic.setEventHandler(BLEWritten, onCalibCommandReceived);
   BLE.addService(pitchService);
   BLE.advertise();
+
+  frontSwingCharacteristic.writeValue(forwardSwingPitch);
+  backSwingCharacteristic.writeValue(backwardSwingPitch);
 
   Serial.println("BLE advertising...");
 }
@@ -70,6 +79,15 @@ void loop() {
 
       if (pitchCharacteristic.subscribed()) {
         pitchCharacteristic.writeValue(pitch);
+      }
+
+      // Ensure front and back swing values are broadcasted
+      if (frontSwingCharacteristic.subscribed()) {
+        frontSwingCharacteristic.writeValue(forwardSwingPitch);
+      }
+
+      if (backSwingCharacteristic.subscribed()) {
+        backSwingCharacteristic.writeValue(backwardSwingPitch);
       }
 
       updateLedColor(pitch);
