@@ -1,6 +1,8 @@
 #include "Nicla_System.h"
 #include "Arduino_BHY2.h"
 #include <ArduinoBLE.h>
+#include <Arduino_LSM9DS1.h>
+#include <Arduino_Battery.h>
 
 // === BLE Custom UUIDs ===
 #define UUID_PREFIX "12345678-"
@@ -13,6 +15,9 @@
 BLEFloatCharacteristic frontSwingCharacteristic(UUID_PREFIX "0004" UUID_SUFFIX, BLERead);
 BLEFloatCharacteristic backSwingCharacteristic(UUID_PREFIX "0005" UUID_SUFFIX, BLERead);
 
+// Add a new BLE characteristic for battery percentage
+BLEFloatCharacteristic batteryPercentageCharacteristic(UUID_PREFIX "0006" UUID_SUFFIX, BLERead);
+
 // === BLE Setup ===
 BLEService pitchService(PITCH_SERVICE_UUID);
 BLEFloatCharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify);
@@ -23,6 +28,9 @@ SensorQuaternion quaternion(SENSOR_ID_RV);
 float idlePitch = 0;
 float forwardSwingPitch = 45;
 float backwardSwingPitch = -45;
+
+// Initialize the battery object
+Battery battery;
 
 // === Tracking calibration state ===
 bool calibratedIdle = false;
@@ -56,14 +64,21 @@ void setup() {
   pitchService.addCharacteristic(calibCommandCharacteristic);
   pitchService.addCharacteristic(frontSwingCharacteristic);
   pitchService.addCharacteristic(backSwingCharacteristic);
+  pitchService.addCharacteristic(batteryPercentageCharacteristic);
   calibCommandCharacteristic.setEventHandler(BLEWritten, onCalibCommandReceived);
   BLE.addService(pitchService);
   BLE.advertise();
 
   frontSwingCharacteristic.writeValue(forwardSwingPitch);
   backSwingCharacteristic.writeValue(backwardSwingPitch);
+  batteryPercentageCharacteristic.writeValue(batteryPercentage);
 
   Serial.println("BLE advertising...");
+
+  if (!battery.begin()) {
+    Serial.println("Failed to initialize battery monitoring!");
+    while (1);
+  }
 }
 
 void loop() {
@@ -88,6 +103,14 @@ void loop() {
 
       if (backSwingCharacteristic.subscribed()) {
         backSwingCharacteristic.writeValue(backwardSwingPitch);
+      }
+
+      // Read the battery percentage
+      float batteryPercentage = battery.readPercentage();
+
+      // Update the battery percentage characteristic
+      if (batteryPercentageCharacteristic.subscribed()) {
+        batteryPercentageCharacteristic.writeValue(batteryPercentage);
       }
 
       updateLedColor(pitch);

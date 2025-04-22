@@ -27,11 +27,25 @@ const pitchData = {
 
 let pitchCharacteristic = null;
 let calibCharacteristic = null;
+let batteryCharacteristic = null;
 
 if ("bluetooth" in navigator) {
   pairButton.addEventListener('click', connect);
 } else {
   BLEstatus.innerText = "Error: This browser doesn't support Web Bluetooth.";
+}
+
+// Add a function to handle battery percentage updates
+async function handleBatteryPercentage() {
+  if (!batteryCharacteristic) return;
+
+  try {
+    const value = await batteryCharacteristic.readValue();
+    const battery = value.getFloat32(0, true);
+    document.getElementById('batteryPercentage').innerText = `Battery: ${battery.toFixed(2)}%`;
+  } catch (err) {
+    console.error('Failed to read battery percentage:', err);
+  }
 }
 
 async function connect() {
@@ -51,11 +65,15 @@ async function connect() {
 
     pitchCharacteristic = await service.getCharacteristic(PITCH_CHARACTERISTIC_UUID);
     calibCharacteristic = await service.getCharacteristic(CALIB_CHARACTERISTIC_UUID);
+    batteryCharacteristic = await service.getCharacteristic('12345678-0006-1000-8000-00805f9b34fb');
 
     await pitchCharacteristic.startNotifications();
     pitchCharacteristic.addEventListener('characteristicvaluechanged', e =>
       handleIncomingPitch(e.target.value)
     );
+
+    handleBatteryPercentage();
+    setInterval(handleBatteryPercentage, 5000); // Update battery percentage every 5 seconds
 
     updateConnectionState('paired');
   } catch (err) {
