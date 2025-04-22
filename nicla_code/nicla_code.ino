@@ -1,17 +1,18 @@
 #include "Nicla_System.h"
 #include "Arduino_BHY2.h"
 #include <ArduinoBLE.h>
-#include "FlashIAP.h"  // Non-Volitile Memory Storage
+#include "mbed.h"
+#include <LittleFileSystem.h>
+#include <FlashIAPBlockDevice.h>
 
 // === BLE Custom UUIDs ===
 #define PITCH_SERVICE_UUID        "12345678-0000-1000-8000-00805f9b34fb"
 #define PITCH_CHARACTERISTIC_UUID "12345678-0001-1000-8000-00805f9b34fb"
 #define CALIB_COMMAND_UUID        "12345678-0003-1000-8000-00805f9b34fb"
 
-// === Flash Storage Config ===
-#define FLASH_DATA_ADDR  0x3F000
-#define FLASH_DATA_SIZE  16
-FlashIAP flash;
+// === Flash Filesystem Setup ===
+FlashIAPBlockDevice bd(0x100000, 64 * 1024);  // Use top 64KB of flash
+LittleFileSystem fs("fs");
 
 // === BLE Setup ===
 BLEService pitchService(PITCH_SERVICE_UUID);
@@ -40,6 +41,12 @@ void setup() {
   nicla::leds.begin();
   BHY2.begin(NICLA_STANDALONE);
   quaternion.begin();
+
+  int err = fs.mount(&bd);
+  if (err) {
+    Serial.println("Mount failed, formatting...");
+    fs.reformat(&bd);
+  }
 
   loadCalibration();
 
@@ -80,7 +87,7 @@ void loop() {
       if (now - lastPrintTime >= PRINT_INTERVAL) {
         Serial.print("Pitch: ");
         Serial.print(pitch);
-        Serial.println("Â\xC2°\xC2\xB0");
+        Serial.println("\xC2\xB0");
         lastPrintTime = now;
       }
     }
@@ -145,30 +152,25 @@ void onCalibCommandReceived(BLEDevice central, BLECharacteristic characteristic)
 }
 
 void saveCalibration() {
-  flash.init();
-  uint8_t buf[FLASH_DATA_SIZE] = {0};
-  memcpy(buf, &idlePitch, 4);
-  memcpy(buf + 4, &forwardSwingPitch, 4);
-  memcpy(buf + 8, &backwardSwingPitch, 4);
-  buf[12] = 1;
-
-  flash.erase(FLASH_DATA_ADDR, flash.get_page_size());
-  flash.program(buf, FLASH_DATA_ADDR, flash.get_page_size());
-  flash.deinit();
-
-  Serial.println("Calibration saved to flash.");
+  FILE* f = fopen("/fs/calib.bin", "wb");
+  if (f) {
+    fwrite(&idlePitch, sizeof(float), 1, f);
+    fwrite(&forwardSwingPitch, sizeof(float), 1, f);
+    fwrite(&backwardSwingPitch, sizeof(float), 1, f);
+    fclose(f);
+    Serial.println("Calibration saved to flash.");
+  } else {
+    Serial.println("Failed to save calibration.");
+  }
 }
 
 void loadCalibration() {
-  flash.init();
-  uint8_t buf[FLASH_DATA_SIZE];
-  memcpy(buf, (const void *)FLASH_DATA_ADDR, FLASH_DATA_SIZE);
-  flash.deinit();
-
-  if (buf[12] == 1) {
-    memcpy(&idlePitch, buf, 4);
-    memcpy(&forwardSwingPitch, buf + 4, 4);
-    memcpy(&backwardSwingPitch, buf + 8, 4);
+  FILE* f = fopen("/fs/calib.bin", "rb");
+  if (f) {
+    fread(&idlePitch, sizeof(float), 1, f);
+    fread(&forwardSwingPitch, sizeof(float), 1, f);
+    fread(&backwardSwingPitch, sizeof(float), 1, f);
+    fclose(f);
     Serial.println("Loaded calibration from flash.");
   } else {
     idlePitch = 0;
