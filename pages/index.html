@@ -17,29 +17,27 @@
 </head>
 
 <body>
-  <div class="container" style="display: flex; flex-direction: column; align-items: center; max-width: 1200px; margin: auto;">
-    <div class="status widget" style="width: 100%; display: flex; justify-content: space-between; align-items: center;">
-      <button id="pairButton" style="flex: 1; margin-right: 10px;">CONNECT</button>
-      <div id="status_text" style="flex: 2; text-align: center;">Click the connect button to connect your device</div>
-      <button id="calibrateButton" style="flex: 1; margin-left: 10px;">CALIBRATE</button>
+  <div class="container">
+    <div class="status widget">
+      <button id="pairButton">CONNECT</button>
+      <div id="status_text">Click the connect button to connect your device</div>
+      <button id="calibrateButton">CALIBRATE</button>
     </div>
 
-    <div class="merged-widget widget" style="width: 100%; margin-top: 20px;">
-      <div class="label" style="text-align: center; margin-bottom: 10px;">Human Arm Motion</div>
+    <div class="merged-widget widget">
+      <div class="label">Human Arm Motion</div>
       
-      <div class="top-section" style="display: flex; justify-content: space-between; align-items: center;">
-        <canvas id="pitchChart" class="doublegraph" style="flex: 1; margin-right: 20px;"></canvas>
-        <div class="text-data" style="flex: 1; margin-right: 20px; text-align: center;">
-            <div class="text-data" style="display: flex; flex-direction: column; align-items: center;">
-            <div class="battery-display" style="margin-bottom: 10px;">
-              <span id="batteryPercentage">Battery: 100%</span>
-            </div>
-            <div class="angle-display">
-              <span id="armAngle">Arm Angle: 0°</span>
-            </div>
-            </div>
+      <div class="top-section">
+        <canvas id="pitchChart"></canvas>
+        <div class="text-data">
+          <div class="battery-display">
+            <span id="batteryPercentage">Battery: 100%</span>
+          </div>
+          <div class="angle-display">
+            <span id="armAngle">Arm Angle: 0°</span>
+          </div>
         </div>
-        <canvas id="humanModel" style="flex: 1; width: 300px; height: 300px;"></canvas>
+        <canvas id="humanModel"></canvas>
       </div>
     </div>
   </div>
