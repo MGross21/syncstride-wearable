@@ -1,8 +1,6 @@
 #include "Nicla_System.h"
 #include "Arduino_BHY2.h"
 #include <ArduinoBLE.h>
-#include <Arduino_LSM9DS1.h>
-#include <Arduino_Battery.h>
 
 // === BLE Custom UUIDs ===
 #define UUID_PREFIX "12345678-"
@@ -11,12 +9,24 @@
 #define PITCH_CHARACTERISTIC_UUID UUID_PREFIX "0001" UUID_SUFFIX
 #define CALIB_COMMAND_UUID        UUID_PREFIX "0003" UUID_SUFFIX
 
+#define BATTERY_PIN A1 // Pin for battery voltage reading
+
 // Add BLE characteristics for front and back swing
 BLEFloatCharacteristic frontSwingCharacteristic(UUID_PREFIX "0004" UUID_SUFFIX, BLERead);
 BLEFloatCharacteristic backSwingCharacteristic(UUID_PREFIX "0005" UUID_SUFFIX, BLERead);
 
 // Add a new BLE characteristic for battery percentage
 BLEFloatCharacteristic batteryPercentageCharacteristic(UUID_PREFIX "0006" UUID_SUFFIX, BLERead);
+
+int batteryPercentage(float v) {
+  if (v >= 4.2) return 100;
+  if (v >= 4.0) return 90;
+  if (v >= 3.8) return 70;
+  if (v >= 3.7) return 50;
+  if (v >= 3.6) return 30;
+  if (v >= 3.5) return 15;
+  return 5;
+}
 
 // === BLE Setup ===
 BLEService pitchService(PITCH_SERVICE_UUID);
@@ -28,9 +38,6 @@ SensorQuaternion quaternion(SENSOR_ID_RV);
 float idlePitch = 0;
 float forwardSwingPitch = 45;
 float backwardSwingPitch = -45;
-
-// Initialize the battery object
-Battery battery;
 
 // === Tracking calibration state ===
 bool calibratedIdle = false;
@@ -71,14 +78,11 @@ void setup() {
 
   frontSwingCharacteristic.writeValue(forwardSwingPitch);
   backSwingCharacteristic.writeValue(backwardSwingPitch);
-  batteryPercentageCharacteristic.writeValue(batteryPercentage);
+  batteryPercentageCharacteristic.writeValue(0.0); // Placeholder for battery level retrieval
+
+  pinMode(BATTERY_PIN, INPUT);
 
   Serial.println("BLE advertising...");
-
-  if (!battery.begin()) {
-    Serial.println("Failed to initialize battery monitoring!");
-    while (1);
-  }
 }
 
 void loop() {
@@ -96,7 +100,6 @@ void loop() {
         pitchCharacteristic.writeValue(pitch);
       }
 
-      // Ensure front and back swing values are broadcasted
       if (frontSwingCharacteristic.subscribed()) {
         frontSwingCharacteristic.writeValue(forwardSwingPitch);
       }
@@ -105,12 +108,14 @@ void loop() {
         backSwingCharacteristic.writeValue(backwardSwingPitch);
       }
 
-      // Read the battery percentage
-      float batteryPercentage = battery.readPercentage();
+      // Read battery voltage and estimate percentage
+      int rawValue = analogRead(BATTERY_PIN);
+      float voltage = rawValue * (3.3 / 1023.0) * 2; // Assuming a voltage divider
+      int batteryPercentageValue = batteryPercentage(voltage);
 
       // Update the battery percentage characteristic
       if (batteryPercentageCharacteristic.subscribed()) {
-        batteryPercentageCharacteristic.writeValue(batteryPercentage);
+        batteryPercentageCharacteristic.writeValue(batteryPercentageValue);
       }
 
       updateLedColor(pitch);
