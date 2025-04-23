@@ -10,6 +10,8 @@ function setUUID(uuid) {
 
 const SERVICE_UUID = setUUID('0000');
 const PITCH_CHARACTERISTIC_UUID = setUUID('0001');
+const FRONT_SWING_UUID = setUUID('0004');
+const BACK_SWING_UUID = setUUID('0005');
 const CALIB_CHARACTERISTIC_UUID = setUUID('0003');
 
 const pairButton = document.getElementById('pairButton');
@@ -26,6 +28,8 @@ const pitchData = {
 };
 
 let pitchCharacteristic = null;
+let frontSwingCharacteristic = null;
+let backSwingCharacteristic = null;
 let calibCharacteristic = null;
 let batteryCharacteristic = null;
 
@@ -64,6 +68,8 @@ async function connect() {
     const service = await server.getPrimaryService(SERVICE_UUID);
 
     pitchCharacteristic = await service.getCharacteristic(PITCH_CHARACTERISTIC_UUID);
+    frontSwingCharacteristic = await service.getCharacteristic(FRONT_SWING_UUID);
+    backSwingCharacteristic = await service.getCharacteristic(BACK_SWING_UUID);
     calibCharacteristic = await service.getCharacteristic(CALIB_CHARACTERISTIC_UUID);
     batteryCharacteristic = await service.getCharacteristic('12345678-0006-1000-8000-00805f9b34fb');
 
@@ -71,6 +77,12 @@ async function connect() {
     pitchCharacteristic.addEventListener('characteristicvaluechanged', e =>
       handleIncomingPitch(e.target.value)
     );
+
+    const frontSwingValue = await frontSwingCharacteristic.readValue();
+    const backSwingValue = await backSwingCharacteristic.readValue();
+
+    document.getElementById('frontSwing').innerText = `Front Swing: ${frontSwingValue.getFloat32(0, true).toFixed(2)}°`;
+    document.getElementById('backSwing').innerText = `Back Swing: ${backSwingValue.getFloat32(0, true).toFixed(2)}°`;
 
     handleBatteryPercentage();
     setInterval(handleBatteryPercentage, 5000); // Update battery percentage every 5 seconds
