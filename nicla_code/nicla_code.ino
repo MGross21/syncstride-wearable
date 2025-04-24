@@ -22,7 +22,7 @@
 
 
 BLEService pitchService(PITCH_SERVICE_UUID);
-BLEFloatCharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify);
+BLECharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify, sizeof(float) * 3);
 BLECharacteristic calibCommandCharacteristic(CALIB_COMMAND_UUID, BLEWrite, 1);
 
 SensorQuaternion quaternion(SENSOR_ID_RV);
@@ -77,7 +77,7 @@ void loop() {
       float backSwing = backwardSwingPitch;
 
       if (pitchCharacteristic.subscribed()) {
-        float data[3] = { pitch, frontSwing, backSwing };
+        float data[3] = { pitch, frontSwing, backSwing }; // Ensure fixed size array
         pitchCharacteristic.writeValue((uint8_t*)data, sizeof(data));
       }
 
