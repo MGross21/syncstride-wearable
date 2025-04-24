@@ -12,7 +12,19 @@
 #define BACK_SWING_UUID           UUID_PREFIX "0005" UUID_SUFFIX
 #define BATTERY_UUID              UUID_PREFIX "0006" UUID_SUFFIX
 
-#define BATTERY_PIN A1
+#define BATTERY_PIN             A1
+
+#define HAPTIC_MOTOR            10
+#define HAPTIC_MOTOR_STRENGTH   255
+#define HAPTIC_MOTOR_DURATION   100 // in milliseconds
+#define HAPTIC_MOTOR_OFF_DELAY  200 // in milliseconds
+
+#define BUZZER                  11
+#define BUZZER_DURATION         100 // in milliseconds
+#define BUZZER_FREQUENCY        1000 // in Hz
+
+#define PRINT_INTERVAL          100 // in milliseconds
+
 
 BLEService pitchService(PITCH_SERVICE_UUID);
 BLEFloatCharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify);
@@ -26,7 +38,6 @@ float idlePitch = 0;
 float forwardSwingPitch = 45;
 float backwardSwingPitch = -45;
 
-const int PRINT_INTERVAL = 100;
 unsigned long lastPrintTime = 0;
 
 void setup() {
@@ -53,6 +64,8 @@ void setup() {
   BLE.advertise();
 
   pinMode(BATTERY_PIN, INPUT);
+  pinMode(HAPTIC_MOTOR, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
   Serial.println("BLE advertising...");
 }
 
@@ -116,6 +129,53 @@ int calculateBatteryPercentage(float voltage) {
   if (voltage >= 3.6) return 30;
   if (voltage >= 3.5) return 15;
   return 5;
+}
+
+void singleMotorTrigger() {
+  static unsigned long lastTriggerTime = 0;
+  static bool motorOn = false;
+
+  if (!motorOn) {
+    analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
+    motorOn = true;
+    lastTriggerTime = millis();
+  } else if (millis() - lastTriggerTime >= HAPTIC_MOTOR_DURATION) {
+    analogWrite(HAPTIC_MOTOR, 0);
+    motorOn = false;
+  }
+}
+
+void doubleMotorTrigger() {
+  static unsigned long lastTriggerTime = 0;
+  static int state = 0;
+
+  switch (state) {
+    case 0: // Turn on the motor
+      analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
+      state = 1;
+      lastTriggerTime = millis();
+      break;
+    case 1: // Turn off the motor after a delay
+      if (millis() - lastTriggerTime >= HAPTIC_MOTOR_DURATION) {
+        analogWrite(HAPTIC_MOTOR, 0);
+        state = 2;
+        lastTriggerTime = millis();
+      }
+      break;
+    case 2: // Turn on the motor again
+      if (millis() - lastTriggerTime >= HAPTIC_MOTOR_OFF_DELAY) {
+        analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
+        state = 3;
+        lastTriggerTime = millis();
+      }
+      break;
+    case 3: // Turn off the motor after a delay
+      if (millis() - lastTriggerTime >= HAPTIC_MOTOR_DURATION) {
+        analogWrite(HAPTIC_MOTOR, 0);
+        state = 0;
+      }
+      break;
+  }
 }
 
 void updateLedColor(float pitch) {
