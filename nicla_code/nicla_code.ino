@@ -16,14 +16,14 @@
 
 #define HAPTIC_MOTOR            10
 #define HAPTIC_MOTOR_STRENGTH   255
-#define HAPTIC_MOTOR_DURATION   100 // in milliseconds
-#define HAPTIC_MOTOR_OFF_DELAY  200 // in milliseconds
+#define HAPTIC_MOTOR_DURATION   100 // milliseconds
+#define HAPTIC_MOTOR_OFF_DELAY  200 // milliseconds
 
 #define BUZZER                  11
-#define BUZZER_DURATION         100 // in milliseconds
-#define BUZZER_FREQUENCY        1000 // in Hz
+#define BUZZER_DURATION         100 // milliseconds
+#define BUZZER_FREQUENCY        1000 // Hz
 
-#define PRINT_INTERVAL          500 // in milliseconds
+#define PRINT_INTERVAL          500 // milliseconds
 
 
 BLEService pitchService(PITCH_SERVICE_UUID);
@@ -174,6 +174,21 @@ void doubleMotorTrigger() {
       break;
   }
 }
+
+void buzzerTrigger() {
+  static unsigned long lastBuzzTime = 0;
+  static bool buzzerOn = false;
+
+  if (!buzzerOn) {
+    tone(BUZZER, BUZZER_FREQUENCY);
+    buzzerOn = true;
+    lastBuzzTime = millis();
+  } else if (millis() - lastBuzzTime >= BUZZER_DURATION) {
+    noTone(BUZZER);
+    buzzerOn = false;
+  }
+}
+
 
 void updateLedColor(float pitch) {
   if (pitch > forwardSwingPitch) {
