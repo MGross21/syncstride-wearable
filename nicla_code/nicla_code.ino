@@ -119,14 +119,14 @@ int calculateBatteryPercentage(float voltage) {
 }
 
 void updateLedColor(float pitch) {
-  if (pitch > forwardSwingPitch + 10) {
+  if (pitch > forwardSwingPitch) {
     nicla::leds.setColor(green);
-  } else if (pitch < backwardSwingPitch - 10) {
-    nicla::leds.setColor(red);
+  } else if (pitch < backwardSwingPitch) {
+    nicla::leds.setColor(green);
   } else if (abs(pitch - idlePitch) < 5) {
     nicla::leds.setColor(blue);
   } else {
-    nicla::leds.setColor(255, 100, 0);
+    nicla::leds.setColor(yellow);
   }
 }
 
