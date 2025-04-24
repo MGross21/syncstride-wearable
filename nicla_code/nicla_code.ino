@@ -22,7 +22,7 @@
 
 
 BLEService pitchService(PITCH_SERVICE_UUID);
-BLECharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify, sizeof(float) * 3);
+BLECharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify, sizeof(float) * 4);
 BLECharacteristic calibCommandCharacteristic(CALIB_COMMAND_UUID, BLEWrite, 1);
 
 SensorQuaternion quaternion(SENSOR_ID_RV);
@@ -57,27 +57,30 @@ void setup() {
   pinMode(BUZZER, OUTPUT);
 }
 
-void writeCharacteristicIfSubscribed(BLEFloatCharacteristic &characteristic, float value) {
-  if (characteristic.subscribed()) {
-    characteristic.writeValue(value);
-  }
-}
+// void writeCharacteristicIfSubscribed(BLECharacteristic &characteristic, float value) {
+//   if (characteristic.subscribed()) {
+//     byte valueBytes[sizeof(float)];
+//     memcpy(valueBytes, &value, sizeof(float));
+//     characteristic.writeValue(valueBytes, sizeof(float));
+//   }
+// }
 
 void loop() {
   BLEDevice central = BLE.central();
 
   if (central) {
     Serial.print("Connected to: ");
-    Serial.println(central.address());
+    Serial.println(central.address().c_str());
 
     while (central.connected()) {
       BHY2.update();
       float pitch = computePitch();
       float frontSwing = forwardSwingPitch;
       float backSwing = backwardSwingPitch;
+      unsigned long timestamp = millis();
 
       if (pitchCharacteristic.subscribed()) {
-        float data[3] = { pitch, frontSwing, backSwing }; // Ensure fixed size array
+        float data[4] = { pitch, frontSwing, backSwing, (float)timestamp };
         pitchCharacteristic.writeValue((uint8_t*)data, sizeof(data));
       }
 
@@ -86,7 +89,7 @@ void loop() {
       unsigned long now = millis();
       if (now - lastPrintTime >= PRINT_INTERVAL) {
         Serial.print("Pitch: ");
-        Serial.print(pitch);
+        Serial.print(pitch, 2);
         Serial.println("°");
         lastPrintTime = now;
       }

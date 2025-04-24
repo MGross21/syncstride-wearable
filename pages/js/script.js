@@ -19,7 +19,10 @@ const BACK_SWING = -45;
 
 let isConnecting = false;
 let lastUpdateTime = 0;
-const pitchData = { values: [], timestamps: [] };
+const pitchData = {
+  values: new Array(MAX_POINTS).fill({ pitch: 0, frontSwing: 0, backSwing: 0, timestamp: 0 }), // Circular buffer for data
+  index: 0 // Pointer to the current position in the buffer
+};
 
 let pitchCharacteristic, calibCharacteristic;
 
@@ -88,10 +91,10 @@ function handleCalibration() {
   if (!calibCharacteristic) return;
 
   const steps = [
+    { text: 'CALIBRATE', command: null, color: '', reset: true },
     { text: 'CALIBRATE IDLE', command: 1, color: 'blue' },
     { text: 'CALIBRATE FRONT SWING', command: 2 },
-    { text: 'CALIBRATE BACK SWING', command: 3 },
-    { text: 'CALIBRATE', command: null, color: '', reset: true }
+    { text: 'CALIBRATE BACK SWING', command: 3 }
   ];
 
   const { text, command, color, reset } = steps[calibrationStep] || {};
@@ -106,25 +109,26 @@ function handleCalibration() {
 function handleIncomingPitch(dataReceived) {
   const dataView = new DataView(dataReceived.buffer);
 
-  if (dataView.byteLength < 12) {
-    console.error('DataView does not contain enough bytes for pitch, front swing, and back swing values.');
+  if (dataView.byteLength < 16) {
+    console.error('DataView does not contain enough bytes for pitch, front swing, back swing, and timestamp values.');
     return;
   }
 
   const pitch = dataView.getFloat32(0, true);
   const frontSwing = dataView.getFloat32(4, true);
   const backSwing = dataView.getFloat32(8, true);
+  const timestamp = dataView.getFloat32(12, true) / 1000; // Convert milliseconds to seconds
 
-  const now = Date.now() / 1000;
+  // Update circular buffer
+  pitchData.values[pitchData.index] = { pitch, frontSwing, backSwing, timestamp };
+  pitchData.index = (pitchData.index + 1) % MAX_POINTS;
 
-  pitchData.values.push({ pitch, frontSwing, backSwing });
-  pitchData.timestamps.push(now);
-  if (pitchData.values.length > MAX_POINTS) {
-    pitchData.values.shift();
-    pitchData.timestamps.shift();
-  }
+  // Update chart with circular buffer data
+  const start = pitchData.index;
+  const labels = pitchData.values.slice(start).concat(pitchData.values.slice(0, start)).map(v => v.timestamp);
+  const values = pitchData.values.slice(start).concat(pitchData.values.slice(0, start)).map(v => v.pitch);
 
-  updateChart(pitchData.timestamps, pitchData.values.map(v => v.pitch));
+  updateChart(labels, values);
   elements.armAngle.innerText = `Arm Angle: ${pitch.toFixed(2)}°`;
   updateHumanModel(pitch);
 }
@@ -160,7 +164,7 @@ function createChart(canvasId) {
   });
 }
 
-function updateChart(timestamps, values) {
+function updateChart(timestamps, pitchValues) {
   if (!pitchChart) {
     console.error('pitchChart is not initialized.');
     return;
@@ -169,7 +173,7 @@ function updateChart(timestamps, values) {
   const start = timestamps[0] ?? 0;
   const labels = timestamps.map(t => +(t - start).toFixed(2));
   pitchChart.data.labels = labels;
-  pitchChart.data.datasets[0].data = values;
+  pitchChart.data.datasets[0].data = pitchValues;
 
   pitchChart.data.datasets[1].data = Array(labels.length).fill(FRONT_SWING);
   pitchChart.data.datasets[2].data = Array(labels.length).fill(BACK_SWING);
