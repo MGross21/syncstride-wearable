@@ -23,7 +23,7 @@
 #define BUZZER_DURATION         100 // in milliseconds
 #define BUZZER_FREQUENCY        1000 // in Hz
 
-#define PRINT_INTERVAL          100 // in milliseconds
+#define PRINT_INTERVAL          500 // in milliseconds
 
 
 BLEService pitchService(PITCH_SERVICE_UUID);
@@ -62,11 +62,11 @@ void setup() {
   calibCommandCharacteristic.setEventHandler(BLEWritten, onCalibCommandReceived);
   BLE.addService(pitchService);
   BLE.advertise();
+  Serial.println("BLE advertising...");
 
   pinMode(BATTERY_PIN, INPUT);
   pinMode(HAPTIC_MOTOR, OUTPUT);
   pinMode(BUZZER, OUTPUT);
-  Serial.println("BLE advertising...");
 }
 
 void writeCharacteristicIfSubscribed(BLEFloatCharacteristic &characteristic, float value) {
