@@ -8,11 +8,6 @@
 #define PITCH_SERVICE_UUID        UUID_PREFIX "0000" UUID_SUFFIX
 #define PITCH_CHARACTERISTIC_UUID UUID_PREFIX "0001" UUID_SUFFIX
 #define CALIB_COMMAND_UUID        UUID_PREFIX "0003" UUID_SUFFIX
-#define FRONT_SWING_UUID          UUID_PREFIX "0004" UUID_SUFFIX
-#define BACK_SWING_UUID           UUID_PREFIX "0005" UUID_SUFFIX
-#define BATTERY_UUID              UUID_PREFIX "0006" UUID_SUFFIX
-
-#define BATTERY_PIN             A1
 
 #define HAPTIC_MOTOR            10
 #define HAPTIC_MOTOR_STRENGTH   255
@@ -29,9 +24,6 @@
 BLEService pitchService(PITCH_SERVICE_UUID);
 BLEFloatCharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify);
 BLECharacteristic calibCommandCharacteristic(CALIB_COMMAND_UUID, BLEWrite, 1);
-BLEFloatCharacteristic frontSwingCharacteristic(FRONT_SWING_UUID, BLERead);
-BLEFloatCharacteristic backSwingCharacteristic(BACK_SWING_UUID, BLERead);
-BLEFloatCharacteristic batteryCharacteristic(BATTERY_UUID, BLERead);
 
 SensorQuaternion quaternion(SENSOR_ID_RV);
 float idlePitch = 0;
@@ -56,15 +48,11 @@ void setup() {
   BLE.setAdvertisedService(pitchService);
   pitchService.addCharacteristic(pitchCharacteristic);
   pitchService.addCharacteristic(calibCommandCharacteristic);
-  pitchService.addCharacteristic(frontSwingCharacteristic);
-  pitchService.addCharacteristic(backSwingCharacteristic);
-  pitchService.addCharacteristic(batteryCharacteristic);
   calibCommandCharacteristic.setEventHandler(BLEWritten, onCalibCommandReceived);
   BLE.addService(pitchService);
   BLE.advertise();
   Serial.println("BLE advertising...");
 
-  pinMode(BATTERY_PIN, INPUT);
   pinMode(HAPTIC_MOTOR, OUTPUT);
   pinMode(BUZZER, OUTPUT);
 }
@@ -85,15 +73,13 @@ void loop() {
     while (central.connected()) {
       BHY2.update();
       float pitch = computePitch();
+      float frontSwing = forwardSwingPitch;
+      float backSwing = backwardSwingPitch;
 
-      writeCharacteristicIfSubscribed(pitchCharacteristic, pitch);
-      writeCharacteristicIfSubscribed(frontSwingCharacteristic, forwardSwingPitch);
-      writeCharacteristicIfSubscribed(backSwingCharacteristic, backwardSwingPitch);
-
-      int rawValue = analogRead(BATTERY_PIN);
-      float voltage = rawValue * (3.3 / 1023.0) * 2;
-      int batteryPercentage = calculateBatteryPercentage(voltage);
-      writeCharacteristicIfSubscribed(batteryCharacteristic, batteryPercentage);
+      if (pitchCharacteristic.subscribed()) {
+        float data[3] = { pitch, frontSwing, backSwing };
+        pitchCharacteristic.writeValue((uint8_t*)data, sizeof(data));
+      }
 
       updateLedColor(pitch);
 
@@ -114,16 +100,6 @@ void loop() {
 float computePitch() {
   float sinp = 2.0f * (quaternion.w() * quaternion.y() - quaternion.z() * quaternion.x());
   return (abs(sinp) >= 1) ? copysign(90.0f, sinp) : asin(sinp) * 180.0f / PI;
-}
-
-int calculateBatteryPercentage(float voltage) {
-  if (voltage >= 4.2) return 100;
-  if (voltage >= 4.0) return 90;
-  if (voltage >= 3.8) return 70;
-  if (voltage >= 3.7) return 50;
-  if (voltage >= 3.6) return 30;
-  if (voltage >= 3.5) return 15;
-  return 5;
 }
 
 void singleMotorTrigger() {

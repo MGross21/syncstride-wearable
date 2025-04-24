@@ -10,10 +10,7 @@ function setUUID(uuid) {
 
 const SERVICE_UUID = setUUID('0000');
 const PITCH_CHARACTERISTIC_UUID = setUUID('0001');
-const FRONT_SWING_UUID = setUUID('0004');
-const BACK_SWING_UUID = setUUID('0005');
 const CALIB_CHARACTERISTIC_UUID = setUUID('0003');
-const BATTERY_CHARACTERISTIC_UUID = setUUID('0006');
 
 const updateInterval = 2; // Real-time updates
 const MAX_POINTS = 200;
@@ -24,16 +21,13 @@ let isConnecting = false;
 let lastUpdateTime = 0;
 const pitchData = { values: [], timestamps: [] };
 
-let pitchCharacteristic, frontSwingCharacteristic, backSwingCharacteristic, calibCharacteristic, batteryCharacteristic;
+let pitchCharacteristic, calibCharacteristic;
 
 const elements = {
   pairButton: document.getElementById('pairButton'),
   calibrateButton: document.getElementById('calibrateButton'),
   BLEstatus: document.getElementById('status_text'),
-  battery: document.getElementById('batteryPercentage'),
-  armAngle: document.getElementById('armAngle'),
-  frontSwing: document.getElementById('frontSwing'),
-  backSwing: document.getElementById('backSwing')
+  armAngle: document.getElementById('armAngle')
 };
 
 if (!navigator.bluetooth) {
@@ -60,17 +54,9 @@ async function connect() {
     const service = await server.getPrimaryService(SERVICE_UUID);
 
     pitchCharacteristic = await service.getCharacteristic(PITCH_CHARACTERISTIC_UUID);
-    frontSwingCharacteristic = await service.getCharacteristic(FRONT_SWING_UUID);
-    backSwingCharacteristic = await service.getCharacteristic(BACK_SWING_UUID);
-    calibCharacteristic = await service.getCharacteristic(CALIB_CHARACTERISTIC_UUID);
-    batteryCharacteristic = await service.getCharacteristic(BATTERY_CHARACTERISTIC_UUID);
 
     await pitchCharacteristic.startNotifications();
     pitchCharacteristic.addEventListener('characteristicvaluechanged', e => handleIncomingPitch(e.target.value));
-
-    updateSwingValues();
-    updateBatteryPercentage();
-    setInterval(updateBatteryPercentage, 2000);
 
     updateConnectionState('paired');
   } catch (err) {
@@ -97,30 +83,6 @@ function updateConnectionState(state) {
   }
 }
 
-async function updateSwingValues() {
-  try {
-    const frontSwingValue = await frontSwingCharacteristic.readValue();
-    const backSwingValue = await backSwingCharacteristic.readValue();
-
-    elements.frontSwing.innerText = `Front Swing: ${frontSwingValue.getFloat32(0, true).toFixed(2)}°`;
-    elements.backSwing.innerText = `Back Swing: ${backSwingValue.getFloat32(0, true).toFixed(2)}°`;
-  } catch (err) {
-    console.error('Failed to read swing values:', err);
-  }
-}
-
-async function updateBatteryPercentage() {
-  if (!batteryCharacteristic) return;
-
-  try {
-    const value = await batteryCharacteristic.readValue();
-    const battery = value.getFloat32(0, true);
-    elements.battery.innerText = `Battery: ${battery.toFixed(2)}%`;
-  } catch (err) {
-    console.error('Failed to read battery percentage:', err);
-  }
-}
-
 let calibrationStep = 0;
 function handleCalibration() {
   if (!calibCharacteristic) return;
@@ -142,17 +104,27 @@ function handleCalibration() {
 }
 
 function handleIncomingPitch(dataReceived) {
-  const pitch = new DataView(dataReceived.buffer).getFloat32(0, true);
+  const dataView = new DataView(dataReceived.buffer);
+
+  if (dataView.byteLength < 12) {
+    console.error('DataView does not contain enough bytes for pitch, front swing, and back swing values.');
+    return;
+  }
+
+  const pitch = dataView.getFloat32(0, true);
+  const frontSwing = dataView.getFloat32(4, true);
+  const backSwing = dataView.getFloat32(8, true);
+
   const now = Date.now() / 1000;
 
-  pitchData.values.push(pitch);
+  pitchData.values.push({ pitch, frontSwing, backSwing });
   pitchData.timestamps.push(now);
   if (pitchData.values.length > MAX_POINTS) {
     pitchData.values.shift();
     pitchData.timestamps.shift();
   }
 
-  updateChart(pitchData.timestamps, pitchData.values);
+  updateChart(pitchData.timestamps, pitchData.values.map(v => v.pitch));
   elements.armAngle.innerText = `Arm Angle: ${pitch.toFixed(2)}°`;
   updateHumanModel(pitch);
 }
@@ -214,6 +186,7 @@ const zAxis = new THREE.Vector3(0, 0, 1);
 let lastAngle = 0;
 const smoothing = 0.1;
 let renderer, scene, camera;
+let pitchChart; // Declare pitchChart at the top of the script
 
 function initHumanModel() {
   const container = document.getElementById('humanModel');
@@ -280,7 +253,7 @@ function updateHumanModel(pitch) {
 
 window.onload = () => {
   initHumanModel();
-  pitchChart = createChart('pitchChart');
+  pitchChart = createChart('pitchChart'); // Ensure pitchChart is initialized here
 };
 
 window.addEventListener('resize', () => {
