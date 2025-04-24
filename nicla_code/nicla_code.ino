@@ -113,9 +113,7 @@ void loop() {
 
 float computePitch() {
   float sinp = 2.0f * (quaternion.w() * quaternion.y() - quaternion.z() * quaternion.x());
-  float pitch = (abs(sinp) >= 1) ? copysign(90.0f, sinp) : asin(sinp) * 180.0f / PI;
-
-  return pitch + 90.0f; // Adjusted to pivot the zero point by 90 degrees
+  return (abs(sinp) >= 1) ? copysign(90.0f, sinp) : asin(sinp) * 180.0f / PI;
 }
 
 int calculateBatteryPercentage(float voltage) {
