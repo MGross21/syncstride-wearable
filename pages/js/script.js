@@ -142,20 +142,18 @@ function handleCalibration() {
 }
 
 function handleIncomingPitch(dataReceived) {
-  const now = Date.now();
-  if (now - lastUpdateTime < updateInterval) return;
-  lastUpdateTime = now;
-
-  const packet = new DataView(dataReceived.buffer);
-  const pitch = packet.getFloat32(0, true);
+  const pitch = new DataView(dataReceived.buffer).getFloat32(0, true);
+  const now = Date.now() / 1000;
 
   pitchData.values.push(pitch);
-  if (pitchData.values.length > MAX_POINTS) pitchData.values.shift();
-
-  pitchData.timestamps.push(now / 1000);
-  if (pitchData.timestamps.length > MAX_POINTS) pitchData.timestamps.shift();
+  pitchData.timestamps.push(now);
+  if (pitchData.values.length > MAX_POINTS) {
+    pitchData.values.shift();
+    pitchData.timestamps.shift();
+  }
 
   updateChart(pitchData.timestamps, pitchData.values);
+  elements.armAngle.innerText = `Arm Angle: ${pitch.toFixed(2)}°`;
   updateHumanModel(pitch);
 }
 

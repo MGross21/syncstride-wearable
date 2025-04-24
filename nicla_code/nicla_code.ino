@@ -56,6 +56,12 @@ void setup() {
   Serial.println("BLE advertising...");
 }
 
+void writeCharacteristicIfSubscribed(BLEFloatCharacteristic &characteristic, float value) {
+  if (characteristic.subscribed()) {
+    characteristic.writeValue(value);
+  }
+}
+
 void loop() {
   BLEDevice central = BLE.central();
 
@@ -67,25 +73,14 @@ void loop() {
       BHY2.update();
       float pitch = computePitch();
 
-      if (pitchCharacteristic.subscribed()) {
-        pitchCharacteristic.writeValue(pitch);
-      }
-
-      if (frontSwingCharacteristic.subscribed()) {
-        frontSwingCharacteristic.writeValue(forwardSwingPitch);
-      }
-
-      if (backSwingCharacteristic.subscribed()) {
-        backSwingCharacteristic.writeValue(backwardSwingPitch);
-      }
+      writeCharacteristicIfSubscribed(pitchCharacteristic, pitch);
+      writeCharacteristicIfSubscribed(frontSwingCharacteristic, forwardSwingPitch);
+      writeCharacteristicIfSubscribed(backSwingCharacteristic, backwardSwingPitch);
 
       int rawValue = analogRead(BATTERY_PIN);
       float voltage = rawValue * (3.3 / 1023.0) * 2;
       int batteryPercentage = calculateBatteryPercentage(voltage);
-
-      if (batteryCharacteristic.subscribed()) {
-        batteryCharacteristic.writeValue(batteryPercentage);
-      }
+      writeCharacteristicIfSubscribed(batteryCharacteristic, batteryPercentage);
 
       updateLedColor(pitch);
 
