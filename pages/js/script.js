@@ -41,31 +41,79 @@ if (!navigator.bluetooth) {
 elements.pairButton?.addEventListener('click', connect);
 elements.calibrateButton?.addEventListener('click', handleCalibration);
 
+async function connectDevice(auto = false) {
+  try {
+    let device;
+
+    if (auto) {
+      const devices = await navigator.bluetooth.getDevices();
+      device = devices.find(d => d.name && d.name.startsWith('SyncStride'));
+
+      if (!device) {
+        console.log('No previously connected device found.');
+        return false;
+      }
+
+      if (device.gatt.connected) {
+        console.log('Device is already connected.');
+        updateConnectionState('paired');
+        return true;
+      }
+    } else {
+      device = await navigator.bluetooth.requestDevice({
+        filters: [
+          { namePrefix: 'SyncStride' },
+          { services: [SERVICE_UUID] }
+        ]
+      });
+    }
+
+    console.log(`Connecting to device: ${device.name}`);
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+
+    pitchCharacteristic = await service.getCharacteristic(PITCH_CHARACTERISTIC_UUID);
+    await pitchCharacteristic.startNotifications();
+    pitchCharacteristic.addEventListener('characteristicvaluechanged', e => handleIncomingPitch(e.target.value));
+
+    updateConnectionState('paired');
+    return true;
+  } catch (err) {
+    console.error('Connection failed:', err);
+    updateConnectionState('failed');
+    return false;
+  }
+}
+
 async function connect() {
   if (isConnecting) return;
   isConnecting = true;
 
   try {
     updateConnectionState('pairing');
-    const device = await navigator.bluetooth.requestDevice({
-      filters: [
-        { namePrefix: 'SyncStride' },
-        { services: [SERVICE_UUID] }
-      ]
-    });
-    const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(SERVICE_UUID);
+    const success = await connectDevice(false);
+    if (!success) {
+      console.log('No device selected or connection failed.');
+    }
+  } finally {
+    isConnecting = false;
+  }
+}
 
-    pitchCharacteristic = await service.getCharacteristic(PITCH_CHARACTERISTIC_UUID);
+async function autoConnect() {
+  if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
+    console.warn('navigator.bluetooth.getDevices is not supported in this browser. Skipping auto-connect.');
+    return;
+  }
 
-    await pitchCharacteristic.startNotifications();
-    pitchCharacteristic.addEventListener('characteristicvaluechanged', e => handleIncomingPitch(e.target.value));
+  if (isConnecting) return;
+  isConnecting = true;
 
-    updateConnectionState('paired');
-  } catch (err) {
-    console.error(err);
-    elements.BLEstatus.innerText = `Connection failed: ${err.message}`;
-    updateConnectionState('failed');
+  try {
+    const success = await connectDevice(true);
+    if (!success) {
+      console.log('Auto-connect failed or no previously connected device found.');
+    }
   } finally {
     isConnecting = false;
   }
@@ -194,6 +242,11 @@ let pitchChart; // Declare pitchChart at the top of the script
 
 function initHumanModel() {
   const container = document.getElementById('humanModel');
+  if (!container) {
+    console.error('Container for human model not found.');
+    return;
+  }
+
   const width = container.clientWidth;
   const height = container.clientHeight;
 
@@ -202,6 +255,7 @@ function initHumanModel() {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(width, height);
   renderer.setPixelRatio(window.devicePixelRatio);
+
   container.innerHTML = ''; // Clear any existing content
   container.appendChild(renderer.domElement);
 
@@ -257,7 +311,8 @@ function updateHumanModel(pitch) {
 
 window.onload = () => {
   initHumanModel();
-  pitchChart = createChart('pitchChart'); // Ensure pitchChart is initialized here
+  pitchChart = createChart('pitchChart');
+  autoConnect(); // Attempt auto-connect on page load
 };
 
 window.addEventListener('resize', () => {

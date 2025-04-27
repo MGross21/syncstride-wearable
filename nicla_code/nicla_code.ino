@@ -57,13 +57,14 @@ void setup() {
   pinMode(BUZZER, OUTPUT);
 }
 
-// void writeCharacteristicIfSubscribed(BLECharacteristic &characteristic, float value) {
-//   if (characteristic.subscribed()) {
-//     byte valueBytes[sizeof(float)];
-//     memcpy(valueBytes, &value, sizeof(float));
-//     characteristic.writeValue(valueBytes, sizeof(float));
-//   }
-// }
+void disconnectDevice() {
+  BLEDevice central = BLE.central();
+  if (central) {
+    central.disconnect();
+    Serial.println("Device disconnected.");
+    nicla::leds.setColor(red);
+  }
+}
 
 void loop() {
   BLEDevice central = BLE.central();
@@ -95,8 +96,7 @@ void loop() {
       }
     }
 
-    nicla::leds.setColor(red);
-    Serial.println("BLE disconnected.");
+    disconnectDevice(); // Ensure proper disconnection
   }
 }
 
