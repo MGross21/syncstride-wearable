@@ -96,7 +96,7 @@ void loop() {
   }
 }
 
-// -------------------- HELPER FUNCTIONS --------------------
+// -------------------- HELPER FUNCTIONS: DEBUG --------------------
 void debugTelemetry(float pitch) {
     updateLedColor(pitch);
     Serial.print("Pitch: ");
@@ -104,11 +104,13 @@ void debugTelemetry(float pitch) {
     Serial.println("°");
 }
 
+// -------------------- HELPER FUNCTIONS: COMPUTATION --------------------
 float computePitch() {
   float sinp = 2.0f * (quaternion.w() * quaternion.y() - quaternion.z() * quaternion.x());
   return (abs(sinp) >= 1) ? copysign(90.0f, sinp) : asin(sinp) * 180.0f / PI;
 }
 
+// -------------------- HELPER FUNCTIONS: HAPTIC FEEDBACK --------------------
 void singleMotorTrigger() {
   if (!motorOn) {
     analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
@@ -177,6 +179,7 @@ void hapticOff() {
   state = 0; // Reset state for doubleMotorTrigger
 }
 
+// -------------------- HELPER FUNCTIONS: LED CONTROL --------------------
 void updateLedColor(float pitch) {
   if (pitch > forwardSwingPitch) {
     nicla::leds.setColor(green);
@@ -189,6 +192,7 @@ void updateLedColor(float pitch) {
   }
 }
 
+// -------------------- HELPER FUNCTIONS: BLE COMMANDS --------------------
 void onCalibCommandReceived(BLEDevice central, BLECharacteristic characteristic) {
   byte command = characteristic.value()[0];
   float currentPitch = computePitch();
