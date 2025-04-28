@@ -9,12 +9,12 @@
 #define PITCH_CHARACTERISTIC_UUID UUID_PREFIX "0001" UUID_SUFFIX
 #define CALIB_COMMAND_UUID        UUID_PREFIX "0003" UUID_SUFFIX
 
-#define HAPTIC_MOTOR            10
+#define HAPTIC_MOTOR            11
 #define HAPTIC_MOTOR_STRENGTH   255
 #define HAPTIC_MOTOR_DURATION   100 // milliseconds
 #define HAPTIC_MOTOR_OFF_DELAY  200 // milliseconds
 
-#define BUZZER                  11
+#define BUZZER                  10
 #define BUZZER_DURATION         100 // milliseconds
 #define BUZZER_FREQUENCY        1000 // Hz
 
