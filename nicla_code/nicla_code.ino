@@ -18,6 +18,7 @@
 #define BUZZER_DURATION         100 // milliseconds
 #define BUZZER_FREQUENCY        1000 // Hz
 
+#define DEBUG_MODE              0 // Set to 1 for debug mode, 0 for production
 #define PRINT_INTERVAL          500 // milliseconds
 
 
@@ -85,10 +86,9 @@ void loop() {
         pitchCharacteristic.writeValue((uint8_t*)data, sizeof(data));
       }
 
-      updateLedColor(pitch);
-
       unsigned long now = millis();
-      if (now - lastPrintTime >= PRINT_INTERVAL) {
+      if (now - lastPrintTime >= PRINT_INTERVAL && DEBUG_MODE) {
+        updateLedColor(pitch);
         Serial.print("Pitch: ");
         Serial.print(pitch, 2);
         Serial.println("°");
