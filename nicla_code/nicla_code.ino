@@ -1,38 +1,49 @@
+// -------------------- INCLUDES --------------------
 #include "Nicla_System.h"
 #include "Arduino_BHY2.h"
 #include <ArduinoBLE.h>
 
-// BLE UUIDs
+// -------------------- BLE UUIDs --------------------
 #define UUID_PREFIX "12345678-"
 #define UUID_SUFFIX "-1000-8000-00805f9b34fb"
 #define PITCH_SERVICE_UUID        UUID_PREFIX "0000" UUID_SUFFIX
 #define PITCH_CHARACTERISTIC_UUID UUID_PREFIX "0001" UUID_SUFFIX
 #define CALIB_COMMAND_UUID        UUID_PREFIX "0003" UUID_SUFFIX
 
+// -------------------- HAPTIC MOTOR SETTINGS --------------------
 #define HAPTIC_MOTOR            11
 #define HAPTIC_MOTOR_STRENGTH   255
 #define HAPTIC_MOTOR_DURATION   100 // milliseconds
 #define HAPTIC_MOTOR_OFF_DELAY  200 // milliseconds
 
+// -------------------- BUZZER SETTINGS --------------------
 #define BUZZER                  10
 #define BUZZER_DURATION         100 // milliseconds
 #define BUZZER_FREQUENCY        1000 // Hz
 
+// -------------------- DEBUG SETTINGS --------------------
 #define DEBUG_MODE              0 // Set to 1 for debug mode, 0 for production
 #define PRINT_INTERVAL          500 // milliseconds
 
-
+// -------------------- BLE SERVICE AND CHARACTERISTICS --------------------
 BLEService pitchService(PITCH_SERVICE_UUID);
 BLECharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify, sizeof(float) * 4);
 BLECharacteristic calibCommandCharacteristic(CALIB_COMMAND_UUID, BLEWrite, 1);
 
+// -------------------- SENSOR SETTINGS --------------------
 SensorQuaternion quaternion(SENSOR_ID_RV);
 float idlePitch = 0;
-float forwardSwingPitch = 45;
-float backwardSwingPitch = -45;
+float forwardSwingPitch = 25;
+float backwardSwingPitch = -25;
 
+// -------------------- GLOBAL VARIABLES --------------------
 unsigned long lastPrintTime = 0;
+unsigned long lastTriggerTime = 0;
+int state = 0;
+bool motorOn = false;
+bool buzzerOn = false;
 
+// -------------------- SETUP FUNCTION --------------------
 void setup() {
   Serial.begin(115200);
   nicla::begin();
@@ -58,15 +69,7 @@ void setup() {
   pinMode(BUZZER, OUTPUT);
 }
 
-void disconnectDevice() {
-  BLEDevice central = BLE.central();
-  if (central) {
-    central.disconnect();
-    Serial.println("Device disconnected.");
-    nicla::leds.setColor(red);
-  }
-}
-
+// -------------------- MAIN LOOP --------------------
 void loop() {
   BLEDevice central = BLE.central();
 
@@ -93,6 +96,7 @@ void loop() {
   }
 }
 
+// -------------------- HELPER FUNCTIONS --------------------
 void debugTelemetry(float pitch) {
     updateLedColor(pitch);
     Serial.print("Pitch: ");
@@ -106,9 +110,6 @@ float computePitch() {
 }
 
 void singleMotorTrigger() {
-  static unsigned long lastTriggerTime = 0;
-  static bool motorOn = false;
-
   if (!motorOn) {
     analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
     motorOn = true;
@@ -120,9 +121,6 @@ void singleMotorTrigger() {
 }
 
 void doubleMotorTrigger() {
-  static unsigned long lastTriggerTime = 0;
-  static int state = 0;
-
   switch (state) {
     case 0: // Turn on the motor
       analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
@@ -153,14 +151,11 @@ void doubleMotorTrigger() {
 }
 
 void buzzerTrigger() {
-  static unsigned long lastBuzzTime = 0;
-  static bool buzzerOn = false;
-
   if (!buzzerOn) {
     tone(BUZZER, BUZZER_FREQUENCY);
     buzzerOn = true;
-    lastBuzzTime = millis();
-  } else if (millis() - lastBuzzTime >= BUZZER_DURATION) {
+    lastTriggerTime = millis();
+  } else if (millis() - lastTriggerTime >= BUZZER_DURATION) {
     noTone(BUZZER);
     buzzerOn = false;
   }
@@ -169,9 +164,18 @@ void buzzerTrigger() {
 void hapticFeedback(float pitch) {
   if (pitch >= forwardSwingPitch || pitch <= backwardSwingPitch) {
     doubleMotorTrigger();
+  } else {
+    hapticOff();
   }
 }
 
+void hapticOff() {
+  analogWrite(HAPTIC_MOTOR, 0);
+  noTone(BUZZER);
+  motorOn = false;
+  buzzerOn = false;
+  state = 0; // Reset state for doubleMotorTrigger
+}
 
 void updateLedColor(float pitch) {
   if (pitch > forwardSwingPitch) {
@@ -205,5 +209,14 @@ void onCalibCommandReceived(BLEDevice central, BLECharacteristic characteristic)
     default:
       Serial.println("Unknown calibration command.");
       return;
+  }
+}
+
+void disconnectDevice() {
+  BLEDevice central = BLE.central();
+  if (central) {
+    central.disconnect();
+    Serial.println("Device disconnected.");
+    nicla::leds.setColor(red);
   }
 }
