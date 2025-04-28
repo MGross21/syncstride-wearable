@@ -77,27 +77,27 @@ void loop() {
     while (central.connected()) {
       BHY2.update();
       float pitch = computePitch();
-      float frontSwing = forwardSwingPitch;
-      float backSwing = backwardSwingPitch;
-      unsigned long timestamp = millis();
+
+      hapticFeedback(pitch);
 
       if (pitchCharacteristic.subscribed()) {
-        float data[4] = { pitch, frontSwing, backSwing, (float)timestamp };
+        float data[4] = { pitch, forwardSwingPitch, backwardSwingPitch, (float)millis() };
         pitchCharacteristic.writeValue((uint8_t*)data, sizeof(data));
       }
-
-      unsigned long now = millis();
-      if (now - lastPrintTime >= PRINT_INTERVAL && DEBUG_MODE) {
-        updateLedColor(pitch);
-        Serial.print("Pitch: ");
-        Serial.print(pitch, 2);
-        Serial.println("°");
-        lastPrintTime = now;
+      if (DEBUG_MODE) {
+        debugTelemetry(pitch);
       }
     }
 
     disconnectDevice(); // Ensure proper disconnection
   }
+}
+
+void debugTelemetry(float pitch) {
+    updateLedColor(pitch);
+    Serial.print("Pitch: ");
+    Serial.print(pitch, 2);
+    Serial.println("°");
 }
 
 float computePitch() {
@@ -163,6 +163,12 @@ void buzzerTrigger() {
   } else if (millis() - lastBuzzTime >= BUZZER_DURATION) {
     noTone(BUZZER);
     buzzerOn = false;
+  }
+}
+
+void hapticFeedback(float pitch) {
+  if (pitch >= forwardSwingPitch || pitch <= backwardSwingPitch) {
+    doubleMotorTrigger();
   }
 }
 
