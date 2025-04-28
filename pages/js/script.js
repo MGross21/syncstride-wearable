@@ -73,6 +73,8 @@ async function connectDevice(auto = false) {
     const service = await server.getPrimaryService(SERVICE_UUID);
 
     pitchCharacteristic = await service.getCharacteristic(PITCH_CHARACTERISTIC_UUID);
+    calibCharacteristic = await service.getCharacteristic(CALIB_CHARACTERISTIC_UUID);
+
     await pitchCharacteristic.startNotifications();
     pitchCharacteristic.addEventListener('characteristicvaluechanged', e => handleIncomingPitch(e.target.value));
 
@@ -135,8 +137,11 @@ function updateConnectionState(state) {
 }
 
 let calibrationStep = 0;
-function handleCalibration() {
-  if (!calibCharacteristic) return;
+async function handleCalibration() {
+  if (!calibCharacteristic) {
+    console.error('Calibration characteristic is not available.');
+    return;
+  }
 
   const steps = [
     { text: 'CALIBRATE', command: null, color: '', reset: true },
@@ -150,7 +155,26 @@ function handleCalibration() {
   elements.calibrateButton.style.backgroundColor = color || '';
   elements.calibrateButton.style.color = color ? 'white' : '';
 
-  if (command) calibCharacteristic.writeValue(Uint8Array.of(command));
+  if (command !== null) {
+    try {
+      // Temporarily stop notifications to avoid conflicts
+      if (pitchCharacteristic) {
+        await pitchCharacteristic.stopNotifications();
+      }
+
+      await calibCharacteristic.writeValue(Uint8Array.of(command));
+      console.log(`Calibration step ${calibrationStep} executed.`);
+
+      // Resume notifications after calibration
+      if (pitchCharacteristic) {
+        await pitchCharacteristic.startNotifications();
+      }
+    } catch (err) {
+      console.error('Calibration failed:', err);
+      elements.BLEstatus.innerText = 'Calibration failed. Please try again.';
+    }
+  }
+
   calibrationStep = reset ? 0 : calibrationStep + 1;
 }
 
