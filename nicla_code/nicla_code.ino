@@ -123,6 +123,9 @@ void singleMotorTrigger() {
 }
 
 void doubleMotorTrigger() {
+  static bool frontSwingTriggered = false;
+  static bool backSwingTriggered = false;
+
   switch (state) {
     case 0: // Turn on the motor
       analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
@@ -150,6 +153,12 @@ void doubleMotorTrigger() {
       }
       break;
   }
+
+  // Reset triggers when state machine completes
+  if (state == 0) {
+    frontSwingTriggered = false;
+    backSwingTriggered = false;
+  }
 }
 
 void buzzerTrigger() {
@@ -164,10 +173,19 @@ void buzzerTrigger() {
 }
 
 void hapticFeedback(float pitch) {
-  if (pitch >= forwardSwingPitch || pitch <= backwardSwingPitch) {
+  static bool frontSwingTriggered = false;
+  static bool backSwingTriggered = false;
+
+  if (pitch >= forwardSwingPitch && !frontSwingTriggered) {
     doubleMotorTrigger();
-  } else {
-    hapticOff();
+    frontSwingTriggered = true;
+  } else if (pitch <= backwardSwingPitch && !backSwingTriggered) {
+    doubleMotorTrigger();
+    backSwingTriggered = true;
+  } else if (pitch > backwardSwingPitch && pitch < forwardSwingPitch) {
+    // Reset triggers when pitch returns to neutral range
+    frontSwingTriggered = false;
+    backSwingTriggered = false;
   }
 }
 
