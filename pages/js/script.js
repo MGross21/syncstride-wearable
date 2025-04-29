@@ -176,6 +176,9 @@ async function handleCalibration() {
   }
 
   calibrationStep = reset ? 0 : calibrationStep + 1;
+  if (calibrationStep >= steps.length) {
+    calibrationStep = 0; // Reset to default state after completing all steps
+  }
 }
 
 function handleIncomingPitch(dataReceived) {
