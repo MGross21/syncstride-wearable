@@ -1,1 +1,3 @@
 bleak
+tkinter
+pyinstaller
