@@ -1,244 +1,228 @@
-// -------------------- INCLUDES --------------------
 #include "Nicla_System.h"
 #include "Arduino_BHY2.h"
 #include <ArduinoBLE.h>
 
-// -------------------- BLE UUIDs --------------------
-#define UUID_PREFIX "12345678-"
-#define UUID_SUFFIX "-1000-8000-00805f9b34fb"
-#define PITCH_SERVICE_UUID        UUID_PREFIX "0000" UUID_SUFFIX
-#define PITCH_CHARACTERISTIC_UUID UUID_PREFIX "0001" UUID_SUFFIX
-#define CALIB_COMMAND_UUID        UUID_PREFIX "0003" UUID_SUFFIX
+// -------------------- Constants --------------------
+constexpr int HAPTIC_PIN = 11;
+constexpr int HAPTIC_STRENGTH = 255;
+constexpr int HAPTIC_DURATION = 100;
+constexpr int HAPTIC_PAUSE = 200;
 
-// -------------------- HAPTIC MOTOR SETTINGS --------------------
-#define HAPTIC_MOTOR            11
-#define HAPTIC_MOTOR_STRENGTH   255
-#define HAPTIC_MOTOR_DURATION   100 // milliseconds
-#define HAPTIC_MOTOR_OFF_DELAY  200 // milliseconds
+constexpr int BUZZER_PIN = 10;
+constexpr int BUZZER_FREQ = 1000;
+constexpr int BUZZER_DURATION = 100;
 
-// -------------------- BUZZER SETTINGS --------------------
-#define BUZZER                  10
-#define BUZZER_DURATION         100 // milliseconds
-#define BUZZER_FREQUENCY        1000 // Hz
+constexpr float DEFAULT_FORWARD_PITCH = 45.0f;
+constexpr float DEFAULT_BACKWARD_PITCH = -45.0f;
+constexpr float CALIB_TOLERANCE = 5.0f;
 
-// -------------------- DEBUG SETTINGS --------------------
-#define DEBUG_MODE              0 // Set to 1 for debug mode, 0 for production
-#define PRINT_INTERVAL          500 // milliseconds
+constexpr char PITCH_SERVICE_UUID[] = "12345678-0000-1000-8000-00805f9b34fb";
+constexpr char PITCH_CHAR_UUID[]    = "12345678-0001-1000-8000-00805f9b34fb";
+constexpr char CALIB_CHAR_UUID[]    = "12345678-0003-1000-8000-00805f9b34fb";
 
-// -------------------- BLE SERVICE AND CHARACTERISTICS --------------------
-BLEService pitchService(PITCH_SERVICE_UUID);
-BLECharacteristic pitchCharacteristic(PITCH_CHARACTERISTIC_UUID, BLERead | BLENotify, sizeof(float) * 4);
-BLECharacteristic calibCommandCharacteristic(CALIB_COMMAND_UUID, BLEWrite, 1);
+enum class HapticPattern : uint8_t { None, Single, Double };
 
-// -------------------- SENSOR SETTINGS --------------------
-SensorQuaternion quaternion(SENSOR_ID_RV);
+// -------------------- Sensor Interface --------------------
+class SensorInterface {
+public:
+  SensorInterface() : quaternion(SENSOR_ID_RV) {}
+  
+  void begin() {
+    BHY2.begin(NICLA_STANDALONE);
+    quaternion.begin();
+  }
+
+  float getPitch() {
+    float sinp = 2.0f * (quaternion.w() * quaternion.y() - quaternion.z() * quaternion.x());
+    return abs(sinp) >= 1.0f ? copysign(90.0f, sinp) : asin(sinp) * 180.0f / PI;
+  }
+
+private:
+  SensorQuaternion quaternion;
+};
+
+// -------------------- Haptic Controller --------------------
+class HapticController {
+public:
+  void begin() {
+    pinMode(HAPTIC_PIN, OUTPUT);
+  }
+
+  void trigger(HapticPattern pattern) {
+    if (activePattern == HapticPattern::None) {
+      activePattern = pattern;
+      state = 0;
+      lastTime = millis();
+    }
+  }
+
+  void update() {
+    if (activePattern == HapticPattern::None) return;
+
+    unsigned long now = millis();
+    switch (activePattern) {
+      case HapticPattern::Single:
+        if (state == 0) {
+          analogWrite(HAPTIC_PIN, HAPTIC_STRENGTH);
+          lastTime = now;
+          state = 1;
+        } else if (now - lastTime >= HAPTIC_DURATION) {
+          analogWrite(HAPTIC_PIN, 0);
+          activePattern = HapticPattern::None;
+        }
+        break;
+
+      case HapticPattern::Double:
+        switch (state) {
+          case 0:
+            analogWrite(HAPTIC_PIN, HAPTIC_STRENGTH);
+            lastTime = now;
+            state = 1;
+            break;
+          case 1:
+            if (now - lastTime >= HAPTIC_DURATION) {
+              analogWrite(HAPTIC_PIN, 0);
+              lastTime = now;
+              state = 2;
+            }
+            break;
+          case 2:
+            if (now - lastTime >= HAPTIC_PAUSE) {
+              analogWrite(HAPTIC_PIN, HAPTIC_STRENGTH);
+              lastTime = now;
+              state = 3;
+            }
+            break;
+          case 3:
+            if (now - lastTime >= HAPTIC_DURATION) {
+              analogWrite(HAPTIC_PIN, 0);
+              activePattern = HapticPattern::None;
+            }
+            break;
+        }
+        break;
+
+      default:
+        analogWrite(HAPTIC_PIN, 0);
+        activePattern = HapticPattern::None;
+        break;
+    }
+  }
+
+private:
+  HapticPattern activePattern = HapticPattern::None;
+  int state = 0;
+  unsigned long lastTime = 0;
+};
+
+// -------------------- BLE Manager --------------------
+class CustomBLEManager {
+public:
+  CustomBLEManager(SensorInterface& sensorRef, float& idleRef, float& fwdRef, float& backRef)
+    : sensor(sensorRef), idlePitch(idleRef), forwardPitch(fwdRef), backwardPitch(backRef) {}
+
+  void begin() {
+    if (!BLE.begin()) {
+      Serial.println("BLE init failed");
+      while (1);
+    }
+
+    BLE.setLocalName("SyncStride");
+    BLE.setAdvertisedService(service);
+    service.addCharacteristic(pitchChar);
+    service.addCharacteristic(calibChar);
+    calibChar.setEventHandler(BLEWritten, onCalibCommand);
+    BLE.addService(service);
+    BLE.advertise();
+
+    CustomBLEManager::instance = this;
+    Serial.println("BLE advertising...");
+  }
+
+  void update() {
+    float pitch = sensor.getPitch();
+
+    if (pitchChar.subscribed()) {
+      float data[4] = { pitch, forwardPitch, backwardPitch, static_cast<float>(millis()) };
+      pitchChar.writeValue(reinterpret_cast<uint8_t*>(data), sizeof(data));
+    }
+
+    if (millis() - lastPrint > 500) {
+      Serial.print("Pitch: ");
+      Serial.println(pitch, 2);
+      lastPrint = millis();
+    }
+  }
+
+  static void onCalibCommand(BLEDevice, BLECharacteristic characteristic) {
+    if (!instance || characteristic.valueLength() < 1) return;
+    byte command = characteristic.value()[0];
+    float pitch = instance->sensor.getPitch();
+
+    switch (command) {
+      case 1: instance->idlePitch = pitch; Serial.println("Calibrated idle"); break;
+      case 2: instance->forwardPitch = pitch; Serial.println("Calibrated forward"); break;
+      case 3: instance->backwardPitch = pitch; Serial.println("Calibrated backward"); break;
+      default: Serial.println("Invalid calibration command"); break;
+    }
+  }
+
+private:
+  SensorInterface& sensor;
+  float& idlePitch;
+  float& forwardPitch;
+  float& backwardPitch;
+
+  BLEService service = BLEService(PITCH_SERVICE_UUID);
+  BLECharacteristic pitchChar = BLECharacteristic(PITCH_CHAR_UUID, BLERead | BLENotify, sizeof(float) * 4);
+  BLECharacteristic calibChar = BLECharacteristic(CALIB_CHAR_UUID, BLEWrite, 1);
+  unsigned long lastPrint = 0;
+
+  static CustomBLEManager* instance;
+};
+
+CustomBLEManager* CustomBLEManager::instance = nullptr;
+
+// -------------------- Globals --------------------
+SensorInterface sensor;
+HapticController haptics;
 float idlePitch = 0;
-float forwardSwingPitch = 25;
-float backwardSwingPitch = -25;
+float forwardPitch = DEFAULT_FORWARD_PITCH;
+float backwardPitch = DEFAULT_BACKWARD_PITCH;
+CustomBLEManager ble(sensor, idlePitch, forwardPitch, backwardPitch);
 
-// -------------------- GLOBAL VARIABLES --------------------
-unsigned long lastPrintTime = 0;
-unsigned long lastTriggerTime = 0;
-int state = 0;
-bool motorOn = false;
-bool buzzerOn = false;
-
-// -------------------- SETUP FUNCTION --------------------
+// -------------------- Setup --------------------
 void setup() {
   Serial.begin(115200);
   nicla::begin();
   nicla::leds.begin();
-  BHY2.begin(NICLA_STANDALONE);
-  quaternion.begin();
-
-  if (!BLE.begin()) {
-    Serial.println("BLE init failed!");
-    while (1);
-  }
-
-  BLE.setLocalName("SyncStride");
-  BLE.setAdvertisedService(pitchService);
-  pitchService.addCharacteristic(pitchCharacteristic);
-  pitchService.addCharacteristic(calibCommandCharacteristic);
-  calibCommandCharacteristic.setEventHandler(BLEWritten, onCalibCommandReceived);
-  BLE.addService(pitchService);
-  BLE.advertise();
-  Serial.println("BLE advertising...");
-
-  pinMode(HAPTIC_MOTOR, OUTPUT);
-  pinMode(BUZZER, OUTPUT);
+  sensor.begin();
+  haptics.begin();
+  ble.begin();
 }
 
-// -------------------- MAIN LOOP --------------------
+// -------------------- Loop --------------------
 void loop() {
   BLEDevice central = BLE.central();
+  if (!central) return;
 
-  if (central) {
-    Serial.print("Connected to: ");
-    Serial.println(central.address().c_str());
+  Serial.print("Connected to: ");
+  Serial.println(central.address().c_str());
 
-    while (central.connected()) {
-      BHY2.update();
-      float pitch = computePitch();
+  while (central.connected()) {
+    BHY2.update();
+    float pitch = sensor.getPitch();
 
-      hapticFeedback(pitch);
-
-      if (pitchCharacteristic.subscribed()) {
-        float data[4] = { pitch, forwardSwingPitch, backwardSwingPitch, (float)millis() };
-        pitchCharacteristic.writeValue((uint8_t*)data, sizeof(data));
-      }
-      if (DEBUG_MODE) {
-        debugTelemetry(pitch);
-      }
+    if (pitch >= forwardPitch) {
+      haptics.trigger(HapticPattern::Single);
+    } else if (pitch <= backwardPitch) {
+      haptics.trigger(HapticPattern::Double);
     }
 
-    disconnectDevice(); // Ensure proper disconnection
-  }
-}
-
-// -------------------- HELPER FUNCTIONS: DEBUG --------------------
-void debugTelemetry(float pitch) {
-    updateLedColor(pitch);
-    Serial.print("Pitch: ");
-    Serial.print(pitch, 2);
-    Serial.println("°");
-}
-
-// -------------------- HELPER FUNCTIONS: COMPUTATION --------------------
-float computePitch() {
-  float sinp = 2.0f * (quaternion.w() * quaternion.y() - quaternion.z() * quaternion.x());
-  return (abs(sinp) >= 1) ? copysign(90.0f, sinp) : asin(sinp) * 180.0f / PI;
-}
-
-// -------------------- HELPER FUNCTIONS: HAPTIC FEEDBACK --------------------
-void singleMotorTrigger() {
-  if (!motorOn) {
-    analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
-    motorOn = true;
-    lastTriggerTime = millis();
-  } else if (millis() - lastTriggerTime >= HAPTIC_MOTOR_DURATION) {
-    analogWrite(HAPTIC_MOTOR, 0);
-    motorOn = false;
-  }
-}
-
-void doubleMotorTrigger() {
-  static bool frontSwingTriggered = false;
-  static bool backSwingTriggered = false;
-
-  switch (state) {
-    case 0: // Turn on the motor
-      analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
-      state = 1;
-      lastTriggerTime = millis();
-      break;
-    case 1: // Turn off the motor after a delay
-      if (millis() - lastTriggerTime >= HAPTIC_MOTOR_DURATION) {
-        analogWrite(HAPTIC_MOTOR, 0);
-        state = 2;
-        lastTriggerTime = millis();
-      }
-      break;
-    case 2: // Turn on the motor again
-      if (millis() - lastTriggerTime >= HAPTIC_MOTOR_OFF_DELAY) {
-        analogWrite(HAPTIC_MOTOR, HAPTIC_MOTOR_STRENGTH);
-        state = 3;
-        lastTriggerTime = millis();
-      }
-      break;
-    case 3: // Turn off the motor after a delay
-      if (millis() - lastTriggerTime >= HAPTIC_MOTOR_DURATION) {
-        analogWrite(HAPTIC_MOTOR, 0);
-        state = 0;
-      }
-      break;
+    haptics.update();
+    ble.update();
   }
 
-  // Reset triggers when state machine completes
-  if (state == 0) {
-    frontSwingTriggered = false;
-    backSwingTriggered = false;
-  }
-}
-
-void buzzerTrigger() {
-  if (!buzzerOn) {
-    tone(BUZZER, BUZZER_FREQUENCY);
-    buzzerOn = true;
-    lastTriggerTime = millis();
-  } else if (millis() - lastTriggerTime >= BUZZER_DURATION) {
-    noTone(BUZZER);
-    buzzerOn = false;
-  }
-}
-
-void hapticFeedback(float pitch) {
-  static bool frontSwingTriggered = false;
-  static bool backSwingTriggered = false;
-
-  if (pitch >= forwardSwingPitch && !frontSwingTriggered) {
-    doubleMotorTrigger();
-    frontSwingTriggered = true;
-  } else if (pitch <= backwardSwingPitch && !backSwingTriggered) {
-    doubleMotorTrigger();
-    backSwingTriggered = true;
-  } else if (pitch > backwardSwingPitch && pitch < forwardSwingPitch) {
-    // Reset triggers when pitch returns to neutral range
-    frontSwingTriggered = false;
-    backSwingTriggered = false;
-  }
-}
-
-void hapticOff() {
-  analogWrite(HAPTIC_MOTOR, 0);
-  noTone(BUZZER);
-  motorOn = false;
-  buzzerOn = false;
-  state = 0; // Reset state for doubleMotorTrigger
-}
-
-// -------------------- HELPER FUNCTIONS: LED CONTROL --------------------
-void updateLedColor(float pitch) {
-  if (pitch > forwardSwingPitch) {
-    nicla::leds.setColor(green);
-  } else if (pitch < backwardSwingPitch) {
-    nicla::leds.setColor(green);
-  } else if (abs(pitch - idlePitch) < 5) {
-    nicla::leds.setColor(blue);
-  } else {
-    nicla::leds.setColor(yellow);
-  }
-}
-
-// -------------------- HELPER FUNCTIONS: BLE COMMANDS --------------------
-void onCalibCommandReceived(BLEDevice central, BLECharacteristic characteristic) {
-  byte command = characteristic.value()[0];
-  float currentPitch = computePitch();
-
-  switch (command) {
-    case 1:
-      idlePitch = currentPitch;
-      Serial.println("Calibrated: idle");
-      break;
-    case 2:
-      forwardSwingPitch = currentPitch;
-      Serial.println("Calibrated: forward");
-      break;
-    case 3:
-      backwardSwingPitch = currentPitch;
-      Serial.println("Calibrated: backward");
-      break;
-    default:
-      Serial.println("Unknown calibration command.");
-      return;
-  }
-}
-
-void disconnectDevice() {
-  BLEDevice central = BLE.central();
-  if (central) {
-    central.disconnect();
-    Serial.println("Device disconnected.");
-    nicla::leds.setColor(red);
-  }
+  central.disconnect();
+  Serial.println("Device disconnected.");
 }
