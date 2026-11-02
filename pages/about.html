@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SyncStride · Project Information</title>
+  <meta name="description" content="Technical details of the SyncStride arm swing biofeedback device: signal chain, Bluetooth interface, hardware and documents.">
+  <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body class="info">
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="./" aria-label="SyncStride console">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M8.6 9 10 4.5h6L17.4 9M8.6 23 10 27.5h6l1.4-4.5" fill="currentColor" />
+          <rect x="5.5" y="9" width="15" height="14" rx="3.6" fill="none" stroke="currentColor" stroke-width="2.4" />
+          <path d="m9.4 16.2 2.4 2.4 4.6-4.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M23.6 12.4a5.4 5.4 0 0 1 0 7.2M26.6 9.6a9.4 9.4 0 0 1 0 12.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+        </svg>
+        <span>SyncStride</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#signal">Signal chain</a>
+        <a href="#ble">Bluetooth</a>
+        <a href="#hardware">Hardware</a>
+        <a href="#documents">Documents</a>
+      </nav>
+      <a class="btn btn-primary btn-small" href="./">Open console</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="intro">
+      <div>
+        <h1>SyncStride</h1>
+        <p class="lede">Wrist-worn biofeedback device for arm swing therapy in Parkinson's disease. It measures wrist pitch
+          during walking and gives a vibration cue when the arm reaches forward and backward targets set for each
+          patient during calibration. Sessions can be viewed live and logged to CSV from a browser or the desktop
+          recorder.</p>
+        <p class="meta">Arizona State University · 2025</p>
+      </div>
+      <figure class="intro-media">
+        <img src="assets/casing.jpg" alt="Rendered SyncStride enclosure" width="1400" height="897">
+      </figure>
+    </section>
+
+    <section id="signal" class="section">
+      <h2>Signal chain</h2>
+      <ol class="chain">
+        <li>
+          <b>Orientation</b>
+          <span>The Nicla Sense ME's on-board sensor fusion outputs a rotation vector quaternion (<code>SENSOR_ID_RV</code>).</span>
+        </li>
+        <li>
+          <b>Pitch</b>
+          <span>Firmware converts it to wrist pitch: <code>asin(2(w·y − z·x))</code>, in degrees, clamped to ±90°.</span>
+        </li>
+        <li>
+          <b>Targets</b>
+          <span>Pitch is compared with the calibrated forward and backward targets (firmware defaults +45° / −45°).</span>
+        </li>
+        <li>
+          <b>Cue</b>
+          <span>Reaching the forward target drives one haptic pulse; reaching the backward target drives two.</span>
+        </li>
+        <li>
+          <b>Stream</b>
+          <span>Every loop, pitch, both targets and a timestamp are notified over BLE to the console or desktop recorder.</span>
+        </li>
+      </ol>
+
+      <div class="two-col">
+        <div>
+          <h3>Haptic patterns</h3>
+          <table class="table">
+            <thead>
+              <tr><th>Event</th><th>Pattern</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Pitch ≥ forward target</td><td>1 × 100 ms pulse</td></tr>
+              <tr><td>Pitch ≤ backward target</td><td>2 × 100 ms pulses, 200 ms apart</td></tr>
+              <tr><td>Drive</td><td>PWM 255 on pin 11 through MOSFET</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h3>Measured performance</h3>
+          <table class="table">
+            <tbody>
+              <tr><td>Haptic latency</td><td>10 ms</td></tr>
+              <tr><td>GUI latency</td><td>100 ms</td></tr>
+              <tr><td>Detection accuracy</td><td>±5°</td></tr>
+              <tr><td>BLE range</td><td>~12 m</td></tr>
+              <tr><td>Battery life</td><td>4+ h continuous</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="ble" class="section">
+      <h2>Bluetooth interface</h2>
+      <p class="section-note">Advertised name <code>SyncStride</code>. All UUIDs share the base
+        <code>12345678-XXXX-1000-8000-00805f9b34fb</code>.</p>
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr><th>Characteristic</th><th>UUID</th><th>Access</th><th>Payload</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Service</td>
+              <td><code>12345678-0000-…</code></td>
+              <td>-</td>
+              <td>-</td>
+            </tr>
+            <tr>
+              <td>Pitch</td>
+              <td><code>12345678-0001-…</code></td>
+              <td>Read, Notify</td>
+              <td>16 bytes, 4 × float32 little-endian: pitch (°), forward target (°), backward target (°), device time (ms)</td>
+            </tr>
+            <tr>
+              <td>Calibration</td>
+              <td><code>12345678-0003-…</code></td>
+              <td>Write</td>
+              <td>1 byte: <code>1</code> idle, <code>2</code> forward, <code>3</code> backward. Stores the current pitch as that target.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="hardware" class="section">
+      <h2>Hardware</h2>
+      <div class="anatomy">
+        <figure class="anatomy-media">
+          <img src="assets/exploded_view.png" alt="Exploded view of the SyncStride enclosure and electronics" width="865" height="953" loading="lazy">
+        </figure>
+        <div>
+          <h3>Assembly</h3>
+          <ul class="parts">
+            <li><b>Casing cap</b><span>Printed lid</span></li>
+            <li><b>Nicla Sense ME</b><span>IMU, microcontroller and Bluetooth</span></li>
+            <li><b>Driver PCB</b><span>MOSFET switching for the buzzer and haptic motor</span></li>
+            <li><b>Haptic motor</b><span>Coin vibration motor against the wrist</span></li>
+            <li><b>Casing base</b><span>PLA, on/off switch on the wrist side</span></li>
+            <li><b>Battery</b><span>3.7 V Li-Po, replaceable</span></li>
+            <li><b>Base lid</b><span>Closes the battery bay</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <figure class="wide-figure">
+        <img src="assets/wrist_fit.jpg" alt="Device worn on the wrist from two angles, with breadth, height and length marked" width="1854" height="370" loading="lazy">
+        <figcaption>Fit on the wrist of a 95th-percentile adult male, nylon sport-loop strap.</figcaption>
+      </figure>
+
+      <div class="hw-grid">
+        <table class="table specs">
+          <tbody>
+            <tr><td>Dimensions (L × B × H)</td><td>74.6 × 33.6 × 31.65 mm</td></tr>
+            <tr><td>Weight</td><td>66 g</td></tr>
+            <tr><td>Enclosure</td><td>PLA</td></tr>
+            <tr><td>Strap</td><td>Nylon sport loop</td></tr>
+            <tr><td>Controller</td><td>Arduino Nicla Sense ME</td></tr>
+            <tr><td>Power</td><td>3.7 V Li-Po</td></tr>
+            <tr><td>Parts cost</td><td>$110</td></tr>
+          </tbody>
+        </table>
+        <a class="doc-card" href="https://github.com/MGross21/syncstride-wearable/blob/main/docs/hardware/schematic.pdf">
+          <img src="assets/schematic.png" alt="Circuit schematic" loading="lazy" width="1710" height="1210">
+          <span class="doc-title">Schematic <span class="arrow">→</span></span>
+          <span class="doc-sub">PDF</span>
+        </a>
+        <a class="doc-card" href="https://github.com/MGross21/syncstride-wearable/blob/main/docs/hardware/case_drawing.pdf">
+          <img src="assets/case_drawing.png" alt="Dimensioned case drawing" loading="lazy" width="3309" height="2339">
+          <span class="doc-title">Case drawing <span class="arrow">→</span></span>
+          <span class="doc-sub">PDF</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="recorder" class="section">
+      <h2>Desktop recorder</h2>
+      <p class="section-note">Python BLE app with live plot, calibration and CSV logging. CSV columns: Timestamp (PC),
+        Pitch (deg), Forward Swing Pitch (deg), Backward Swing Pitch (deg), Device Timestamp (ms). The web console exports
+        the same format.</p>
+      <div class="video-frame">
+        <video controls preload="none" poster="assets/demo_poster.jpg" width="940" height="596">
+          <source src="assets/demo.mp4" type="video/mp4">
+        </video>
+      </div>
+    </section>
+
+    <section id="documents" class="section">
+      <h2>Documents</h2>
+      <div class="resources">
+        <a class="res-card res-poster" href="https://github.com/MGross21/syncstride-wearable/blob/main/docs/poster.png">
+          <img src="assets/poster.jpg" alt="SyncStride research poster" loading="lazy" width="1600" height="960">
+          <span class="doc-title">Poster <span class="arrow">→</span></span>
+        </a>
+        <a class="res-card" href="https://github.com/MGross21/syncstride-wearable/blob/main/docs/presentation.pdf">
+          <span class="doc-title">Presentation <span class="arrow">→</span></span>
+          <span class="doc-sub">10 slides · PDF</span>
+        </a>
+        <a class="res-card" href="https://github.com/MGross21/syncstride-wearable/tree/main/nicla_code">
+          <span class="doc-title">Firmware <span class="arrow">→</span></span>
+          <span class="doc-sub">Arduino sketch for the Nicla Sense ME</span>
+        </a>
+        <a class="res-card" href="https://github.com/MGross21/syncstride-wearable/tree/main/device_recorder">
+          <span class="doc-title">Desktop recorder <span class="arrow">→</span></span>
+          <span class="doc-sub">Python source</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="team" class="section">
+      <h2>Team</h2>
+      <ul class="team">
+        <li>Shashank Singh Deo</li>
+        <li><a href="https://github.com/MGross21">Michael Gross</a></li>
+        <li>Glen Stevens</li>
+        <li>Jonathan Hernandez</li>
+        <li>Nitish R. Dyapa</li>
+        <li>Heman S. Chagarlamudi</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <span>SyncStride · 2025</span>
+      <a href="https://github.com/MGross21/syncstride-wearable">Source on GitHub</a>
+    </div>
+  </footer>
+</body>
+
+</html>

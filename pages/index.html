@@ -4,38 +4,142 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SyncStride</title>
+  <title>SyncStride Console</title>
+  <meta name="description" content="Web Bluetooth console for the SyncStride arm swing biofeedback device: live pitch, calibration and session logging.">
   <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
 
-  <!-- Fonts & Libraries -->
-  <link href="https://fonts.googleapis.com/css?family=Roboto+Mono" rel="stylesheet">
-  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+      }
+    }
+  </script>
   <script type="module" src="js/script.js"></script>
 </head>
 
-<body>
-  <div class="container">
-    <div class="status widget">
-      <button id="pairButton">CONNECT</button>
-      <div id="status_text" data-default="Click the connect button to connect your device"></div>
-      <button id="calibrateButton">CALIBRATE</button>
+<body class="app" data-mode="device">
+  <header class="app-bar">
+    <a class="brand" href="./" aria-label="SyncStride console">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M8.6 9 10 4.5h6L17.4 9M8.6 23 10 27.5h6l1.4-4.5" fill="currentColor" />
+        <rect x="5.5" y="9" width="15" height="14" rx="3.6" fill="none" stroke="currentColor" stroke-width="2.4" />
+        <path d="m9.4 16.2 2.4 2.4 4.6-4.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M23.6 12.4a5.4 5.4 0 0 1 0 7.2M26.6 9.6a9.4 9.4 0 0 1 0 12.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+      </svg>
+      <span>SyncStride</span>
+    </a>
+
+    <div class="segmented" role="group" aria-label="Data source">
+      <button type="button" data-mode-btn="device" aria-pressed="true">Device</button>
+      <button type="button" data-mode-btn="demo" aria-pressed="false">Demo</button>
     </div>
 
-    <div class="merged-widget widget">
-      <div class="label">Human Arm Motion</div>
-      
-      <div class="top-section">
-        <canvas id="pitchChart"></canvas>
-        <div class="angle-display">
-          <span id="armAngle">Arm Angle: 0°</span>
-        </div>
-        <canvas id="humanModel"></canvas>
-      </div>
+    <div class="status" data-state="idle" id="status">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="statusText" aria-live="polite">Not connected</span>
     </div>
-  </div>
+
+    <div class="bar-actions">
+      <button type="button" class="btn btn-lime" id="connectBtn" data-device-only>Connect</button>
+      <button type="button" class="btn btn-dark" id="exportBtn">Export CSV</button>
+      <a class="btn btn-dark" href="about.html">Project info</a>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <div class="console-grid">
+      <section class="panel chart-panel" aria-label="Pitch chart">
+        <div class="panel-head">
+          <span>Wrist pitch · last 10&nbsp;s</span>
+          <span class="legend">
+            <span class="key key-fwd">Forward target</span>
+            <span class="key key-back">Backward target</span>
+          </span>
+        </div>
+        <div class="chart-box">
+          <canvas id="chart" aria-label="Pitch over the last 10 seconds" role="img"></canvas>
+          <div class="empty" id="empty">
+            <p id="emptyText">No device connected.</p>
+            <div class="empty-actions">
+              <button type="button" class="btn btn-lime" data-connect>Connect device</button>
+              <button type="button" class="btn btn-dark" data-mode-btn="demo">Run demo</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel figure-panel" aria-label="Arm position">
+        <div class="readout">
+          <span class="readout-label">Pitch</span>
+          <span class="readout-value"><span id="pitchValue">0.0</span><span class="unit">°</span></span>
+        </div>
+        <div class="arm3d" id="arm3d" aria-label="3D model of the left arm following the measured pitch" role="img">
+          <span class="arm3d-msg" id="arm3dMsg">Loading 3D arm…</span>
+          <span class="arm3d-tag tag-back">Back</span>
+          <span class="arm3d-tag tag-fwd">Forward</span>
+          <span class="arm3d-hint">Drag to orbit</span>
+        </div>
+        <p class="cue" id="cue" aria-live="polite">No cue yet</p>
+      </section>
+    </div>
+
+    <div class="console-foot">
+      <section class="panel calib" aria-label="Calibration">
+        <div class="panel-head">
+          <span>Calibration</span>
+          <span class="hint">Hold the arm at each position, then press.</span>
+        </div>
+        <div class="calib-buttons">
+          <button type="button" data-calib="1">Idle</button>
+          <button type="button" data-calib="2">Forward</button>
+          <button type="button" data-calib="3">Backward</button>
+        </div>
+        <dl class="targets">
+          <div><dt>Idle</dt><dd id="idleValue">-</dd></div>
+          <div><dt>Forward</dt><dd id="fwdValue">-</dd></div>
+          <div><dt>Backward</dt><dd id="backValue">-</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel controls" data-demo-only aria-label="Simulator">
+        <div class="panel-head"><span>Simulator</span></div>
+        <label class="slider">
+          <span>Swing amplitude <output id="ampOut" for="amp">30°</output></span>
+          <input type="range" id="amp" min="5" max="60" value="30">
+        </label>
+        <label class="slider">
+          <span>Cadence <output id="cadenceOut" for="cadence">100 steps/min</output></span>
+          <input type="range" id="cadence" min="60" max="130" value="100">
+        </label>
+        <label class="toggle"><input type="checkbox" data-sound> <span>Play cues as sound</span></label>
+      </section>
+
+      <section class="panel controls" data-device-only aria-label="Setup">
+        <div class="panel-head"><span>Setup</span></div>
+        <ol class="steps-mini">
+          <li>Strap the device on the left wrist and switch it on.</li>
+          <li>Press <b>Connect</b> and choose <b>SyncStride</b>.</li>
+          <li>Calibrate idle, forward and backward swing.</li>
+        </ol>
+        <label class="toggle"><input type="checkbox" data-sound> <span>Play cues as sound</span></label>
+      </section>
+
+      <dl class="tiles">
+        <div><dt>Peaks · 10 s</dt><dd id="peaksValue">-</dd></div>
+        <div><dt>Forward cues</dt><dd id="fwdCues">0</dd></div>
+        <div><dt>Backward cues</dt><dd id="backCues">0</dd></div>
+        <div><dt>Session</dt><dd id="sessionTime">0:00</dd></div>
+      </dl>
+    </div>
+  </main>
 </body>
 
 </html>
